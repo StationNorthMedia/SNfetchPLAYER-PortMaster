@@ -615,6 +615,10 @@ class SNfetchDashboard:
         except Exception:
             pass
         self._last_axis_time = 0.0
+        self._last_action_time: Dict[int, float] = {}
+        self._state_transition_time: float = time.time()
+        self._audio_lock = threading.RLock()
+        self._resolve_id: int = 0
 
         # In-App Background Asset Downloader
         self.sync_active = False
@@ -926,14 +930,21 @@ class SNfetchDashboard:
 
     # --- AUDIO CONTROLS (RADIO MODE) ---
     def stop_audio(self):
-        if self.audio_proc and self.audio_proc.poll() is None:
-            self.audio_proc.terminate()
-            try:
-                self.audio_proc.wait(timeout=0.4)
-            except Exception:
-                self.audio_proc.kill()
-        self.audio_proc = None
-        self.is_playing = False
+        with self._audio_lock:
+            self._resolve_id += 1
+            proc = self.audio_proc
+            self.audio_proc = None
+            self.is_playing = False
+            self.is_station_drop = False
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=0.3)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
 
     def _audio_spectrum_reader(self, proc: subprocess.Popen):
         chunk_size = 2048  # 1024 16-bit mono samples (~46ms @ 22.05kHz)
@@ -947,19 +958,22 @@ class SNfetchDashboard:
             pass
 
     def trigger_play_track_async(self, idx: int):
-        if self.is_resolving:
-            return
-        self.resolve_target_idx = idx
-        self.is_resolving = True
-        self.resolve_thread = threading.Thread(target=self._resolve_and_play_worker, args=(idx,), daemon=True)
+        with self._audio_lock:
+            self._resolve_id += 1
+            curr_id = self._resolve_id
+            self.resolve_target_idx = idx
+            self.is_resolving = True
+            self.stop_audio()
+        self.resolve_thread = threading.Thread(target=self._resolve_and_play_worker, args=(idx, curr_id), daemon=True)
         self.resolve_thread.start()
 
-    def _resolve_and_play_worker(self, idx: int):
+    def _resolve_and_play_worker(self, idx: int, req_id: int):
         try:
             if idx < 0 or idx >= len(self.playlist):
                 return
 
-            self.stop_audio()
+            if self.state != STATE_RADIO or self._resolve_id != req_id:
+                return
 
             # 2:1 Rotation Check (unless Repeat mode is on)
             if not self.shuffle_mgr.is_repeat_mode and self.station_mgr.should_play_station_content():
@@ -978,19 +992,31 @@ class SNfetchDashboard:
                         "-map", "[out1]", "-f", "alsa", "default",
                         "-map", "[out2]", "-f", "s16le", "-ac", "1", "-ar", "22050", "-"
                     ]
-                    self.audio_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-                    self.is_playing = True
+                    with self._audio_lock:
+                        if self.state != STATE_RADIO or self._resolve_id != req_id:
+                            return
+                        self.audio_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                        self.is_playing = True
                     self.playback_start_time = time.time()
                     self.track_duration = 12.0
                     threading.Thread(target=self._audio_spectrum_reader, args=(self.audio_proc,), daemon=True).start()
-                    self.audio_proc.wait()
+                    
+                    proc = self.audio_proc
+                    if proc:
+                        try:
+                            proc.wait()
+                        except Exception:
+                            pass
                     self.is_station_drop = False
+
+            if self.state != STATE_RADIO or self._resolve_id != req_id:
+                return
 
             track = self.playlist[idx]
             yt_id = track.get("youtubeId")
             stream_url, duration = get_stream(yt_id, prefer_audio_only=True)
 
-            if stream_url:
+            if stream_url and self.state == STATE_RADIO and self._resolve_id == req_id:
                 self.current_idx = idx
                 self.cursor_idx = idx
                 self._update_quote()
@@ -1002,8 +1028,11 @@ class SNfetchDashboard:
                     "-map", "[out1]", "-f", "alsa", "default",
                     "-map", "[out2]", "-f", "s16le", "-ac", "1", "-ar", "22050", "-"
                 ]
-                self.audio_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-                self.is_playing = True
+                with self._audio_lock:
+                    if self.state != STATE_RADIO or self._resolve_id != req_id:
+                        return
+                    self.audio_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                    self.is_playing = True
                 self.playback_start_time = time.time()
                 try:
                     self.track_duration = float(duration) if duration and float(duration) > 0 else 210.0
@@ -1013,7 +1042,8 @@ class SNfetchDashboard:
         except Exception as e:
             print(f"Playback error: {e}")
         finally:
-            self.is_resolving = False
+            if self._resolve_id == req_id:
+                self.is_resolving = False
 
     # --- VIDEO CONTROLS (TV MODE: 4:3 DISPLAY FILL & FLOATING OSD) ---
     def _get_input_devices(self):
@@ -1428,14 +1458,19 @@ class SNfetchDashboard:
 
     # --- CHRONICLES AUDIO (FAITH NARRATION) ---
     def stop_chronicles_audio(self):
-        if self.chronicles_proc and self.chronicles_proc.poll() is None:
-            self.chronicles_proc.terminate()
-            try:
-                self.chronicles_proc.wait(timeout=0.5)
-            except Exception:
-                self.chronicles_proc.kill()
-        self.chronicles_proc = None
-        self.chronicles_playing = False
+        with self._audio_lock:
+            proc = self.chronicles_proc
+            self.chronicles_proc = None
+            self.chronicles_playing = False
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=0.3)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
 
     def toggle_chronicles_audio(self):
         if self.chronicles_playing:
@@ -2388,6 +2423,17 @@ class SNfetchDashboard:
     # =========================================================================
     def _handle_action_key(self, key: int) -> bool:
         """Central key and controller button event handler. Returns False if application should exit."""
+        now = time.time()
+        # 1. Cooldown filter: Ignore duplicate action keys within 160ms (fixes double-firing from gptokeyb + direct joystick)
+        if now - self._last_action_time.get(key, 0.0) < 0.16:
+            return True
+        self._last_action_time[key] = now
+
+        # 2. State transition debounce: Block action keys for 250ms right after a state change to avoid bleed-through
+        if now - self._state_transition_time < 0.25:
+            if key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a, pygame.K_ESCAPE, pygame.K_b, pygame.K_q, pygame.K_BACKSPACE, pygame.K_TAB, pygame.K_s):
+                return True
+
         # Global Settings Toggle [Select] (Tab / S)
         if key in (pygame.K_TAB, pygame.K_s):
             if self.state == STATE_SETTINGS:
@@ -2395,6 +2441,8 @@ class SNfetchDashboard:
             else:
                 self.previous_state = self.state
                 self.state = STATE_SETTINGS
+            self._state_transition_time = now
+            pygame.event.clear()
             return True
 
         # --- SPLASH SCREEN ---
@@ -2407,19 +2455,25 @@ class SNfetchDashboard:
                 if self.splash_cursor == 0:
                     self.show_loading_screen("RADIO MODE", "Loading Station North Radio...")
                     self.state = STATE_RADIO
+                    self._state_transition_time = time.time()
+                    pygame.event.clear()
                     self._load_active_playlist(is_tv=False)
                     self.trigger_play_track_async(self.current_idx)
+                    return True
                 elif self.splash_cursor == 1:
                     self.show_loading_screen("STATION NORTH TV", "Starting Television Broadcast...")
                     self._load_active_playlist(is_tv=True)
                     self.launch_video_playback(self.current_idx, manual_trigger=True)
                     self.state = STATE_SPLASH
                     self.splash_enter_time = time.time()
+                    self._state_transition_time = time.time()
                     pygame.event.clear()
                     return True
                 elif self.splash_cursor == 2:
                     self.show_loading_screen("THE CHRONICLES", "Loading Comic & Voice Lore...")
                     self.state = STATE_CHRONICLES
+                    self._state_transition_time = time.time()
+                    pygame.event.clear()
                     return True
             elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
                 if time.time() - self.splash_enter_time > 0.8:
@@ -2464,6 +2518,7 @@ class SNfetchDashboard:
                 self.stop_audio()
                 self.state = STATE_SPLASH
                 self.splash_enter_time = time.time()
+                self._state_transition_time = time.time()
                 pygame.event.clear()
                 return True
             elif key in (pygame.K_f, pygame.K_x):
@@ -2495,6 +2550,7 @@ class SNfetchDashboard:
             elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
                 self.state = STATE_SPLASH
                 self.splash_enter_time = time.time()
+                self._state_transition_time = time.time()
                 pygame.event.clear()
                 return True
             elif key in (pygame.K_f, pygame.K_x):
@@ -2521,6 +2577,7 @@ class SNfetchDashboard:
                 self.stop_chronicles_audio()
                 self.state = STATE_SPLASH
                 self.splash_enter_time = time.time()
+                self._state_transition_time = time.time()
                 pygame.event.clear()
                 return True
             return True
@@ -2551,6 +2608,9 @@ class SNfetchDashboard:
                     self.settings_column = 1
                 elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
                     self.state = self.previous_state
+                    self._state_transition_time = time.time()
+                    pygame.event.clear()
+                    return True
             else:
                 # Column 1: Handbook scrolling
                 if key == pygame.K_UP:
@@ -2584,6 +2644,7 @@ class SNfetchDashboard:
 
             # Auto-Advance in Chronicles
             if self.state == STATE_CHRONICLES and self.chronicles_proc and self.chronicles_proc.poll() is not None:
+                self.chronicles_proc = None
                 self.chronicles_playing = False
                 if self.chronicles_idx < len(self.chronicles_data) - 1:
                     self.chronicles_idx += 1
