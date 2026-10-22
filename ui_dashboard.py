@@ -2075,13 +2075,13 @@ class SNfetchDashboard:
     def _trigger_cockpit_action(self, idx: int):
         """Executes the action of the focused button (Android TV navigation model)"""
         if idx == 0:
-            # Fullscreen Mode [ ] -> Plays Music Video in Fullscreen (4:3)
-            self.stop_audio()
-            self.launch_video_playback(self.current_idx, manual_trigger=True)
-            self._state_transition_time = time.time()
-            pygame.event.clear()
+            # Fullscreen Mode [ ]
             if self.state == STATE_RADIO:
-                self.trigger_play_track_async(self.current_idx)
+                self.is_radio_zen_mode = not self.is_radio_zen_mode
+                self.radio_osd_visible = True
+                self.radio_osd_last_interaction = time.time()
+            elif self.state == STATE_TV:
+                self.launch_video_playback(self.current_idx, manual_trigger=True)
 
         elif idx == 1:
             # Previous Track
@@ -2485,6 +2485,40 @@ class SNfetchDashboard:
 
         # --- RADIO MODE (ANDROID TV D-PAD FOCUS CURSOR) ---
         elif self.state == STATE_RADIO:
+            if self.is_radio_zen_mode:
+                if key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
+                    self.is_radio_zen_mode = False
+                    self.radio_osd_visible = True
+                    return True
+
+                if not self.radio_osd_visible:
+                    self.radio_osd_visible = True
+                    self.radio_osd_last_interaction = time.time()
+                    return True
+
+                self.radio_osd_last_interaction = time.time()
+                if key == pygame.K_LEFT:
+                    self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
+                elif key == pygame.K_RIGHT:
+                    self.cockpit_focus_idx = (self.cockpit_focus_idx + 1) % 5
+                elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
+                    self._trigger_cockpit_action(self.cockpit_focus_idx)
+                elif key in (pygame.K_f, pygame.K_x):
+                    self.is_radio_zen_mode = False
+                elif key in (pygame.K_p, pygame.K_PAUSE):
+                    self._trigger_cockpit_action(2)
+                elif key == pygame.K_y:
+                    self._trigger_cockpit_action(4)
+                elif key == pygame.K_UP:
+                    self.station_mgr.increment_counter()
+                    self.current_idx = self.shuffle_mgr.advance_previous()
+                    self.trigger_play_track_async(self.current_idx)
+                elif key == pygame.K_DOWN:
+                    self.station_mgr.increment_counter()
+                    self.current_idx = self.shuffle_mgr.advance_next()
+                    self.trigger_play_track_async(self.current_idx)
+                return True
+
             if key == pygame.K_LEFT:
                 self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
             elif key == pygame.K_RIGHT:
@@ -2499,7 +2533,9 @@ class SNfetchDashboard:
                 pygame.event.clear()
                 return True
             elif key in (pygame.K_f, pygame.K_x):
-                self._trigger_cockpit_action(0)
+                self.is_radio_zen_mode = True
+                self.radio_osd_visible = True
+                self.radio_osd_last_interaction = time.time()
             elif key in (pygame.K_p, pygame.K_PAUSE):
                 self._trigger_cockpit_action(2)
             elif key == pygame.K_y:
@@ -2714,7 +2750,10 @@ class SNfetchDashboard:
             if self.state == STATE_SPLASH:
                 self.draw_splash_screen()
             elif self.state == STATE_RADIO:
-                self.draw_radio_dashboard()
+                if self.is_radio_zen_mode:
+                    self.draw_radio_zen_mode()
+                else:
+                    self.draw_radio_dashboard()
             elif self.state == STATE_TV:
                 self.draw_tv_dashboard()
             elif self.state == STATE_CHRONICLES:
