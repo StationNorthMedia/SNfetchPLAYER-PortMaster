@@ -13,9 +13,6 @@ log.txt
 *.swp
 *.swo
 
-# Assets are distributed via GitHub Releases to keep git tree lightweight
-assets/
-
 # Development screenshots (except official logo)
 preview_*.png
 dashboard_*.png
