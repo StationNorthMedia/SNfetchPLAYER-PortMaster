@@ -40,8 +40,15 @@ import pygame
 
 pygame.display.init()
 pygame.font.init()
-if not pygame.joystick.get_init():
-    pygame.joystick.init()
+# PortMaster uses gptokeyb to map gamepad buttons to keyboard keys.
+# We block all raw joystick events in Pygame to prevent duplicate/conflicting inputs.
+pygame.event.set_blocked([
+    pygame.JOYAXISMOTION,
+    pygame.JOYBALLMOTION,
+    pygame.JOYHATMOTION,
+    pygame.JOYBUTTONDOWN,
+    pygame.JOYBUTTONUP,
+])
 
 from extractor import get_stream
 from osd_generator import generate_osd_ass
@@ -605,16 +612,7 @@ class SNfetchDashboard:
         self.settings_feedback_msg = ""
         self.settings_feedback_time = 0.0
 
-        # Direct Pygame Gamepad / Joystick initialization (Redundant fallback alongside gptokeyb)
-        self.joysticks = []
-        try:
-            for j_idx in range(pygame.joystick.get_count()):
-                joy = pygame.joystick.Joystick(j_idx)
-                joy.init()
-                self.joysticks.append(joy)
-        except Exception:
-            pass
-        self._last_axis_time = 0.0
+
         self._last_action_time: Dict[int, float] = {}
         self._state_transition_time: float = time.time()
         self._audio_lock = threading.RLock()
@@ -2677,20 +2675,7 @@ class SNfetchDashboard:
                 pygame.quit()
                 sys.exit(0)
 
-            if self.joysticks:
-                try:
-                    for joy in self.joysticks:
-                        nb = joy.get_numbuttons()
-                        if nb > 7:
-                            b_sel = joy.get_button(6) or (nb > 8 and joy.get_button(8))
-                            b_sta = joy.get_button(7) or (nb > 9 and joy.get_button(9))
-                            if b_sel and b_sta:
-                                self.stop_audio()
-                                self.stop_chronicles_audio()
-                                pygame.quit()
-                                sys.exit(0)
-                except Exception:
-                    pass
+
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -2699,53 +2684,6 @@ class SNfetchDashboard:
                 elif event.type == pygame.KEYDOWN:
                     if not self._handle_action_key(event.key):
                         running = False
-
-                elif event.type == pygame.JOYBUTTONDOWN:
-                    btn_map = {
-                        0: pygame.K_RETURN,   # A
-                        1: pygame.K_ESCAPE,   # B
-                        2: pygame.K_f,        # X
-                        3: pygame.K_y,        # Y
-                        4: pygame.K_LEFT,     # L1
-                        5: pygame.K_RIGHT,    # R1
-                        6: pygame.K_TAB,      # Select
-                        7: pygame.K_p,        # Start
-                        8: pygame.K_TAB,      # Alt Select
-                        9: pygame.K_p,        # Alt Start
-                    }
-                    mapped_k = btn_map.get(event.button)
-                    if mapped_k is not None:
-                        if not self._handle_action_key(mapped_k):
-                            running = False
-
-                elif event.type == pygame.JOYHATMOTION:
-                    hx, hy = event.value
-                    if hx == -1:
-                        self._handle_action_key(pygame.K_LEFT)
-                    elif hx == 1:
-                        self._handle_action_key(pygame.K_RIGHT)
-                    elif hy == 1:
-                        self._handle_action_key(pygame.K_UP)
-                    elif hy == -1:
-                        self._handle_action_key(pygame.K_DOWN)
-
-                elif event.type == pygame.JOYAXISMOTION:
-                    now = time.time()
-                    if now - self._last_axis_time > 0.22:
-                        if event.axis == 0:
-                            if event.value < -0.55:
-                                self._last_axis_time = now
-                                self._handle_action_key(pygame.K_LEFT)
-                            elif event.value > 0.55:
-                                self._last_axis_time = now
-                                self._handle_action_key(pygame.K_RIGHT)
-                        elif event.axis == 1:
-                            if event.value < -0.55:
-                                self._last_axis_time = now
-                                self._handle_action_key(pygame.K_UP)
-                            elif event.value > 0.55:
-                                self._last_axis_time = now
-                                self._handle_action_key(pygame.K_DOWN)
 
             if self.state == STATE_SPLASH:
                 self.draw_splash_screen()
