@@ -80,6 +80,16 @@ NORD13 = (235, 203, 139)   # #ebcb8b - Aurora Gold / Amber (Button 5: Repeat Tra
 NORD14 = (163, 190, 140)   # #a3be8c - Aurora Green / Live On Air / Battery Good
 NORD15 = (180, 142, 173)   # #b48ead - Aurora Lavender / Purple (Button 4: Next Track [►])
 
+# Aurora Randomized Color Palette & Quote Class Mapping
+AURORA_PALETTE = [NORD11, NORD12, NORD13, NORD14, NORD15, NORD7, NORD8, NORD9]
+SPRUECHE_CLASS_MAP = {
+    "radio-red": NORD11,
+    "radio-orange": NORD12,
+    "radio-yellow": NORD13,
+    "radio-green": NORD14,
+    "radio-purple": NORD15,
+}
+
 # Aliases for compatibility
 COLOR_BG            = NORD0
 COLOR_BAR_BG        = (36, 41, 51)
@@ -572,9 +582,12 @@ class SNfetchDashboard:
         self.playlist: List[Dict] = []
         self._discover_playlists()
 
-        # Quotes / Lore
-        self.quotes: List[str] = []
-        self.current_quote = "The lights are low, the bass is heavy. Station North."
+        # Quotes / Lore & Aurora Styling
+        self.quotes: List[Dict[str, Any]] = []
+        self.current_quote: str = "The lights are low, the bass is heavy. Station North."
+        self.current_quote_color: Tuple[int, int, int] = NORD8
+        self._last_quote_time: float = time.time()
+        self._cached_radial_glow: Optional[pygame.Surface] = None
         self._load_quotes()
 
         # The Chronicles
@@ -742,20 +755,62 @@ class SNfetchDashboard:
         self.cursor_idx = self.current_idx
 
     def _load_quotes(self):
+        self.quotes = []
         for q_path in [Path("sprueche.json"), Path("/roms/ports/snfetchplayer/sprueche.json")]:
             if q_path.exists():
                 try:
                     with open(q_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                        self.quotes = [q.get("text", "") for q in data if "text" in q]
-                    break
+                        for item in data:
+                            if isinstance(item, dict) and "text" in item:
+                                cls_name = item.get("class", item.get("color", ""))
+                                default_col = SPRUECHE_CLASS_MAP.get(cls_name, None)
+                                self.quotes.append({
+                                    "text": item["text"].strip(),
+                                    "color": default_col
+                                })
+                            elif isinstance(item, str) and item.strip():
+                                self.quotes.append({"text": item.strip(), "color": None})
+                    if self.quotes:
+                        break
                 except Exception:
                     pass
         self._update_quote()
 
     def _update_quote(self):
         if self.quotes:
-            self.current_quote = random.choice(self.quotes)
+            q = random.choice(self.quotes)
+            self.current_quote = q["text"]
+            # Always assign a randomized Aurora color per user request
+            self.current_quote_color = random.choice(AURORA_PALETTE)
+        else:
+            self.current_quote = "The lights are low, the bass is heavy. Station North."
+            self.current_quote_color = random.choice(AURORA_PALETTE)
+        self._last_quote_time = time.time()
+
+    def _check_cycle_quote(self):
+        now = time.time()
+        if now - self._last_quote_time > 8.0:
+            self._update_quote()
+
+    def _render_wrapped_lines(self, text: str, font: pygame.font.Font, max_w: int) -> List[str]:
+        words = text.split(" ")
+        lines = []
+        cur_line = []
+        for w in words:
+            test_line = " ".join(cur_line + [w])
+            if font.size(test_line)[0] <= max_w:
+                cur_line.append(w)
+            else:
+                if cur_line:
+                    lines.append(" ".join(cur_line))
+                    cur_line = [w]
+                else:
+                    lines.append(w)
+                    cur_line = []
+        if cur_line:
+            lines.append(" ".join(cur_line))
+        return lines
 
     def _load_chronicles(self):
         paths = [
@@ -982,29 +1037,88 @@ class SNfetchDashboard:
             self.sync_active = False
             self.sync_error = str(e)
 
-    def show_loading_screen(self, title="STATION NORTH // LOADING...", subtitle="Initializing Audio Stream..."):
+    def show_loading_screen(self, title: str = "STATION NORTH TV", subtitle: str = "Initializing Audio Stream..."):
         if not pygame.display.get_init():
             pygame.display.init()
             self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
             pygame.mouse.set_visible(False)
 
         self.screen.fill(NORD0)
+
+        # 1. Harmonized 56px Top Bar
+        top_title = "STATION NORTH TV" if "TV" in title else ("THE CHRONICLES" if "CHRONICLES" in title else "STATION NORTH")
+        self.draw_top_bar(custom_title=top_title, subtitle="CONNECTING TO STREAM • BUFFERING")
+
+        # 2. Centered Content Card (760x420)
+        card_w = 760
+        card_h = 420
+        card_x = (SCREEN_WIDTH - card_w) // 2
+        card_y = (SCREEN_HEIGHT - card_h) // 2 - 10
+        card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
+
+        pygame.draw.rect(self.screen, (24, 28, 36), card_rect, border_radius=20)
+        pygame.draw.rect(self.screen, (46, 52, 64), card_rect, width=2, border_radius=20)
+        # Top Cyan Accent Line
+        self._draw_horizontal_gradient(self.screen, pygame.Rect(card_x + 24, card_y, card_w - 48, 3), NORD8, NORD7)
+
+        # Centered Station North Logo (144x90 keeps 16:10 aspect ratio)
         cx = SCREEN_WIDTH // 2
-        cy = SCREEN_HEIGHT // 2 - 40
-        if self.logo_large:
-            self.screen.blit(self.logo_large, (cx - 100, cy - 80))
+        logo_w, logo_h = 144, 90
+        logo_src = self.logo_large if self.logo_large else self.logo_img
+        if logo_src:
+            scaled_logo = pygame.transform.smoothscale(logo_src, (logo_w, logo_h))
+            self.screen.blit(scaled_logo, (cx - logo_w // 2, card_y + 36))
 
-        t_surf = self._load_font(28, bold=True).render(title, True, NORD8)
-        self.screen.blit(t_surf, (cx - t_surf.get_width() // 2, cy + 60))
+        # Channel Badge
+        badge_y = card_y + 144
+        badge_txt = "✦ STATION NORTH RETRO BROADCAST ✦"
+        b_surf = self._load_font(16, bold=True).render(badge_txt, True, NORD8)
+        self.screen.blit(b_surf, (cx - b_surf.get_width() // 2, badge_y))
 
-        s_surf = self._load_font(18).render(subtitle, True, NORD4)
-        self.screen.blit(s_surf, (cx - s_surf.get_width() // 2, cy + 104))
+        # Parse & Format Video Info cleanly (prevent overflow / breakout)
+        display_text = subtitle
+        if display_text.startswith("Loading Video: "):
+            display_text = display_text[15:]
 
-        pbar_w = 400
-        pbar_x = (SCREEN_WIDTH - pbar_w) // 2
-        pbar_y = cy + 148
-        pygame.draw.rect(self.screen, COLOR_BAR_BG, (pbar_x, pbar_y, pbar_w, 8), border_radius=4)
-        pygame.draw.rect(self.screen, NORD8, (pbar_x, pbar_y, int(pbar_w * 0.75), 8), border_radius=4)
+        if " - " in display_text:
+            parts = display_text.split(" - ", 1)
+            artist_line = parts[0].strip()
+            title_line = parts[1].strip()
+        else:
+            artist_line = ""
+            title_line = display_text.strip()
+
+        cur_y = card_y + 184
+        if artist_line:
+            art_surf = self._load_font(20, bold=True).render(artist_line, True, NORD4)
+            if art_surf.get_width() > card_w - 60:
+                art_surf = self._load_font(18, bold=True).render(artist_line[:40] + "...", True, NORD4)
+            self.screen.blit(art_surf, (cx - art_surf.get_width() // 2, cur_y))
+            cur_y += 34
+
+        t_font = self._load_font(24, bold=True)
+        if t_font.size(title_line)[0] > card_w - 60:
+            t_font = self._load_font(20, bold=True)
+            if t_font.size(title_line)[0] > card_w - 60:
+                title_line = title_line[:46] + "..."
+        tit_surf = t_font.render(title_line, True, (255, 255, 255))
+        self.screen.blit(tit_surf, (cx - tit_surf.get_width() // 2, cur_y))
+
+        # Progress Bar (640px)
+        pbar_w = card_w - 120
+        pbar_h = 14
+        pbar_x = cx - pbar_w // 2
+        pbar_y = card_y + 296
+        pygame.draw.rect(self.screen, (16, 20, 26), (pbar_x, pbar_y, pbar_w, pbar_h), border_radius=7)
+        fill_w = int(pbar_w * 0.72)
+        pygame.draw.rect(self.screen, NORD8, (pbar_x, pbar_y, fill_w, pbar_h), border_radius=7)
+        pygame.draw.rect(self.screen, (255, 255, 255), (pbar_x + fill_w - 12, pbar_y + 2, 8, pbar_h - 4), border_radius=3)
+
+        note_surf = self._load_font(16, bold=True).render("⚡ Resolving Stream via InnerTube • 4:3 Display Fill", True, NORD4)
+        self.screen.blit(note_surf, (cx - note_surf.get_width() // 2, card_y + 332))
+
+        # 3. Harmonized 48px Bottom Bar
+        self.draw_bottom_bar(pills=[("B", "Abbrechen", NORD11)], right_text="v6.0 • PortMaster Edition")
 
         pygame.display.flip()
 
@@ -1704,6 +1818,24 @@ class SNfetchDashboard:
 
         surface.blit(temp, rect.topleft)
 
+    def _draw_horizontal_gradient(self, surface: pygame.Surface, rect: pygame.Rect, col_left: Tuple[int, int, int], col_right: Tuple[int, int, int], border_radius: int = 0):
+        """Draws a high-precision horizontal linear gradient with optional rounded corners"""
+        temp = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        w = max(rect.width - 1, 1)
+        for x in range(rect.width):
+            factor = x / w
+            r = int(col_left[0] + factor * (col_right[0] - col_left[0]))
+            g = int(col_left[1] + factor * (col_right[1] - col_left[1]))
+            b = int(col_left[2] + factor * (col_right[2] - col_left[2]))
+            pygame.draw.line(temp, (r, g, b), (x, 0), (x, rect.height))
+
+        if border_radius > 0:
+            mask = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, rect.width, rect.height), border_radius=border_radius)
+            temp.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+
+        surface.blit(temp, rect.topleft)
+
     def _draw_splash_radio_icon(self, surface: pygame.Surface, cx: int, cy: int, col: Tuple[int, int, int]):
         """Vector Retro Boombox / Radio Tuner icon"""
         bw, bh = 114, 64
@@ -1828,11 +1960,11 @@ class SNfetchDashboard:
     # RENDERER 1: 3D ROTATING LOGO SPLASH & DOCKING TRANSITION (v6.0)
     # =========================================================================
     def _draw_3d_intro_splash(self):
-        """Cinematic 3D Y-Axis Rotating Coin-Spin Logo Intro with Harmonized Frame"""
+        """Cinematic 3D Y-Axis Rotating Coin-Spin Logo Intro with Harmonized Frame (Glitch-Free)"""
         self.screen.fill(NORD0)
 
-        # Standard Harmonized Top Bar
-        self.draw_top_bar(custom_title="STATION NORTH", subtitle="SYSTEM BOOT SEQUENCE • 3D INITIALIZATION")
+        # Standard Harmonized Top Bar WITHOUT logo (logo will dock here after spin)
+        self.draw_top_bar(custom_title="STATION NORTH", subtitle="SYSTEM BOOT SEQUENCE • 3D INITIALIZATION", show_logo=False)
 
         now = time.time()
         elapsed = now - self.intro_start_time
@@ -1842,45 +1974,62 @@ class SNfetchDashboard:
         base_w = 340
         base_h = 212
 
-        # 1. Subtle pulsing radial cyan glow behind center
-        pulse = 1.0 + 0.15 * math.sin(elapsed * 4.0)
-        for r in range(220, 40, -18):
-            alpha = int(14 * (1.0 - r / 220) * pulse)
-            glow_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (136, 192, 208, max(1, alpha)), (r, r), r)
-            self.screen.blit(glow_surf, (cx - r, cy - r))
+        # 1. Cached smooth pulsing radial cyan glow behind center
+        pulse = 1.0 + 0.12 * math.sin(elapsed * 4.0)
+        glow_size = int(460 * pulse)
+        if self._cached_radial_glow is None:
+            self._cached_radial_glow = pygame.Surface((460, 460), pygame.SRCALPHA)
+            for r in range(220, 20, -16):
+                alpha = int(14 * (1.0 - r / 220))
+                pygame.draw.circle(self._cached_radial_glow, (136, 192, 208, alpha), (230, 230), r)
 
-        # 2. 3D Coin Spin (Y-Axis rotation) with distinct elapsed-time speed
-        # Spins ~2.2 revolutions over 3.8s (dynamic angular speed)
+        scaled_glow = pygame.transform.smoothscale(self._cached_radial_glow, (glow_size, glow_size))
+        self.screen.blit(scaled_glow, (cx - glow_size // 2, cy - glow_size // 2))
+
+        # 2. 3D Coin Spin (Y-Axis rotation)
         self.intro_angle = elapsed * 3.6
         rad = self.intro_angle
-        curr_scale_x = abs(math.cos(rad))
-        curr_w = max(6, int(base_w * curr_scale_x))
+        cos_a = math.cos(rad)
+        sin_a = math.sin(rad)
+        face_is_front = (cos_a >= 0)
+        curr_scale_x = abs(cos_a)
+        curr_w = max(4, int(base_w * curr_scale_x))
 
         logo_src = self.logo_large if self.logo_large else self.logo_img
         if logo_src:
-            # 3D Depth / Extrusion effect on the edges
-            depth = int(18 * abs(math.sin(rad)))
-            for d in range(depth, 0, -1):
-                offset_x = d * (1 if math.sin(rad) >= 0 else -1)
-                scaled_edge = pygame.transform.smoothscale(logo_src, (curr_w, base_h))
-                edge_surf = scaled_edge.copy()
-                edge_surf.fill((46, 65, 88, 175), special_flags=pygame.BLEND_RGBA_MULT)
-                self.screen.blit(edge_surf, (cx - curr_w // 2 + offset_x, cy - base_h // 2))
+            # Determine active face: Front or Mirrored Back
+            if face_is_front:
+                active_face = logo_src
+            else:
+                active_face = pygame.transform.flip(logo_src, True, False)
+                # Apply shadow shading to reverse side
+                shaded = active_face.copy()
+                shaded.fill((165, 185, 210), special_flags=pygame.BLEND_RGB_MULT)
+                active_face = shaded
 
-            # Front face
-            scaled_front = pygame.transform.smoothscale(logo_src, (curr_w, base_h))
-            self.screen.blit(scaled_front, (cx - curr_w // 2, cy - base_h // 2))
+            # Scale active face ONCE (super fast & fluid on ARM)
+            face_scaled = pygame.transform.smoothscale(active_face, (curr_w, base_h))
 
-            # Specular gleam when front face is visible
-            if math.cos(rad) > 0.35:
-                gleam_progress = (elapsed * 2.0) % 1.0
-                gx = int(cx - curr_w // 2 + curr_w * gleam_progress)
-                gw = max(4, int(curr_w * 0.12))
-                gleam_surf = pygame.Surface((gw, base_h), pygame.SRCALPHA)
-                gleam_alpha = int(110 * math.cos(rad))
-                gleam_surf.fill((255, 255, 255, gleam_alpha))
-                self.screen.blit(gleam_surf, (gx - gw // 2, cy - base_h // 2))
+            # 3D Depth / Extrusion Rim (projects behind the face)
+            rim_depth = int(14 * abs(sin_a))
+            # Direction: when rotating counter-clockwise, rim projects along -sin_a
+            rim_dir = -1 if sin_a > 0 else 1
+            if rim_depth > 1:
+                rim_surf = face_scaled.copy()
+                rim_surf.fill((46, 62, 84), special_flags=pygame.BLEND_RGB_MULT)
+                step = 2
+                for ox in range(rim_depth, 0, -step):
+                    self.screen.blit(rim_surf, (cx - curr_w // 2 + ox * rim_dir, cy - base_h // 2))
+
+            # Blit Main Face on top of extrusion with dynamic 3D lighting (no glitchy white rect bars!)
+            if face_is_front:
+                # Subtle specular highlight on front face based on angle to camera
+                shine_val = int(255 * (0.82 + 0.18 * cos_a))
+                lit_face = face_scaled.copy()
+                lit_face.fill((shine_val, shine_val, shine_val), special_flags=pygame.BLEND_RGB_MULT)
+                self.screen.blit(lit_face, (cx - curr_w // 2, cy - base_h // 2))
+            else:
+                self.screen.blit(face_scaled, (cx - curr_w // 2, cy - base_h // 2))
 
         # 3. Typography below logo (Large & Crisp for 3.5" screen)
         brand_surf = self._load_font(36, bold=True).render("STATION NORTH", True, NORD6)
@@ -1896,7 +2045,7 @@ class SNfetchDashboard:
     def _draw_intro_transition(self, ease: float):
         """Smooth docking transition from 3D rotating splash to docked header & 3+2 menu"""
         slide_offset = int(60 * (1.0 - ease))
-        self._draw_3plus2_main_menu(slide_offset=slide_offset, alpha=int(255 * ease))
+        self._draw_3plus2_main_menu(slide_offset=slide_offset, alpha=int(255 * ease), show_top_logo=False)
 
         # Flying / Docking Logo interpolates from center to top-left corner
         start_x, start_y = SCREEN_WIDTH // 2, 388
@@ -1945,11 +2094,11 @@ class SNfetchDashboard:
         # 2. Main 3+2 Tile Menu
         self._draw_3plus2_main_menu()
 
-    def _draw_3plus2_main_menu(self, slide_offset: int = 0, alpha: int = 255):
+    def _draw_3plus2_main_menu(self, slide_offset: int = 0, alpha: int = 255, show_top_logo: bool = True):
         self.screen.fill(NORD0)
 
         # 1. Top Bar / Header with official SN Logo
-        self.draw_top_bar(custom_title="STATION NORTH", subtitle="CYBERDECK MEDIA SUITE • v6.0")
+        self.draw_top_bar(custom_title="STATION NORTH", subtitle="CYBERDECK MEDIA SUITE • v6.0", show_logo=show_top_logo)
 
         # 2. 3+2 Grid Setup (Balanced for 48px footer and 56px header)
         card_w = 230
@@ -2051,7 +2200,7 @@ class SNfetchDashboard:
         pygame.draw.rect(self.screen, (136, 192, 208), glow_rect, width=4, border_radius=18)
         pygame.draw.rect(self.screen, (255, 255, 255), cur_rect.inflate(4, 4), width=2, border_radius=17)
 
-        # 3. Lower Section: Asset Synchronisation & Download Status (Large Typography)
+        # 3. Lower Section: Asset Synchronisation & Randomized Aurora Quotes
         j_found, t_found, c_found, total_found, pct = self.get_asset_stats()
         lower_box_y = card_y + card_h + 18
         box_w = 910
@@ -2064,48 +2213,62 @@ class SNfetchDashboard:
             disp_pct = max(self.sync_pct, pct)
             hdr_text = f"DOWNLOADING MEDIA ASSETS ({int(disp_pct)}% READY)"
             hdr_col = NORD8
-            sub_text = self.sync_status_text if self.sync_status_text else "Downloading missing media pack from GitHub..."
+            sub_text = self.sync_status_text if self.sync_status_text else "Downloading media pack from GitHub..."
             sub_col = NORD5
-            hint_text = "💡 Engine is active! You can start Radio / TV now, or press [SELECT] for Settings."
-            hint_col = NORD13
         elif pct >= 99.0:
             hdr_text = "ALL MEDIA ASSETS SYNCHRONIZED (100% READY)"
             hdr_col = NORD7
-            sub_text = f"174 Station Jingles  •  42 Retro TV Idents (4:3 Broadcast)  •  98 Chronicles Lore Comic Pages"
+            sub_text = "174 Station Jingles   •   42 Retro TV Idents (4:3)   •   98 Chronicles Pages"
             sub_col = NORD5
-            hint_text = "Press [A] to launch selected mode  •  Use D-Pad to navigate  •  Press [Select] for Quick Settings"
-            hint_col = NORD4
         else:
             hdr_text = f"ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
             hdr_col = NORD13
-            sub_text = f"Local Assets: {j_found}/174 Jingles  •  {t_found}/42 TV IDs  •  {c_found}/98 Chronicles"
+            sub_text = f"Local Assets: {j_found}/174 Jingles   •   {t_found}/42 TV Idents   •   {c_found}/98 Comics"
             sub_col = NORD5
-            hint_text = "Connect to Wi-Fi to sync TV idents & jingles  •  Press [SELECT] for Settings"
-            hint_col = NORD12
 
         # Header with indicator dot
-        pygame.draw.circle(self.screen, hdr_col, (box_x + 34, lower_box_y + 30), 8)
-        sync_title = self._load_font(23, bold=True).render(hdr_text, True, hdr_col)
-        self.screen.blit(sync_title, (box_x + 54, lower_box_y + 18))
+        pygame.draw.circle(self.screen, hdr_col, (box_x + 34, lower_box_y + 32), 7)
+        sync_title = self._load_font(21, bold=True).render(hdr_text, True, hdr_col)
+        self.screen.blit(sync_title, (box_x + 50, lower_box_y + 20))
 
-        # Subtext breakdown
-        details_surf = self._load_font(18, bold=True).render(sub_text, True, sub_col)
-        self.screen.blit(details_surf, (box_x + 28, lower_box_y + 56))
+        # Subtext breakdown (fits cleanly with generous breathing room, no breakout)
+        details_surf = self._load_font(17, bold=True).render(sub_text, True, sub_col)
+        self.screen.blit(details_surf, (box_x + 28, lower_box_y + 52))
 
         # Wide Progress Bar
         bar_w = box_w - 56
-        bar_h = 20
+        bar_h = 16
         bar_x = box_x + 28
-        bar_y = lower_box_y + 96
-        pygame.draw.rect(self.screen, (24, 28, 36), (bar_x, bar_y, bar_w, bar_h), border_radius=10)
+        bar_y = lower_box_y + 82
+        pygame.draw.rect(self.screen, (20, 24, 32), (bar_x, bar_y, bar_w, bar_h), border_radius=8)
         curr_pct = max(self.sync_pct, pct) if self.sync_active else pct
         fill_w = max(6, int(bar_w * (min(100.0, curr_pct) / 100.0)))
         bar_col = NORD8 if self.sync_active else (NORD7 if pct >= 99.0 else NORD13)
-        pygame.draw.rect(self.screen, bar_col, (bar_x, bar_y, fill_w, bar_h), border_radius=10)
+        pygame.draw.rect(self.screen, bar_col, (bar_x, bar_y, fill_w, bar_h), border_radius=8)
 
-        # Hint text at bottom of box
-        hint_surf = self._load_font(17, bold=True).render(hint_text, True, NORD4)
-        self.screen.blit(hint_surf, (box_x + 28, lower_box_y + 130))
+        # 4. Randomized Lore & Quotes from sprueche.json in Aurora Colors (replaces old hint line)
+        self._check_cycle_quote()
+        # Subtle horizontal divider line
+        pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, lower_box_y + 112), (box_x + box_w - 28, lower_box_y + 112), 1)
+
+        # Broadcast badge
+        badge_surf = self._load_font(14, bold=True).render("✦ THE QUEEN'S FREQUENCY // BROADCAST TRANSMISSION ✦", True, NORD9)
+        self.screen.blit(badge_surf, (box_x + 28, lower_box_y + 122))
+
+        # Word-wrapped Quote Text in Randomized Aurora Color
+        q_font = self._load_font(20, bold=True)
+        max_q_w = box_w - 56
+        quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
+        if len(quote_lines) > 3:
+            q_font = self._load_font(18, bold=True)
+            quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
+
+        line_y = lower_box_y + 148
+        line_h = 28 if q_font.size("A")[1] >= 20 else 24
+        for line in quote_lines[:4]:
+            q_surf = q_font.render(line, True, self.current_quote_color)
+            self.screen.blit(q_surf, (box_x + 28, line_y))
+            line_y += line_h
 
         # 4. Harmonized Bottom Footer Bar with Pills (NO [B] Exit!)
         menu_pills = [
@@ -2182,14 +2345,15 @@ class SNfetchDashboard:
     # =========================================================================
     # RENDERER 3: TOP-BAR (STATUSLEISTE MIT FIXIERTEN SLOTS)
     # =========================================================================
-    def draw_top_bar(self, custom_title: Optional[str] = None, subtitle: Optional[str] = None):
+    def draw_top_bar(self, custom_title: Optional[str] = None, subtitle: Optional[str] = None, show_logo: bool = True):
         pygame.draw.rect(self.screen, COLOR_BAR_BG, (0, 0, SCREEN_WIDTH, 56))
         pygame.draw.line(self.screen, (50, 56, 68), (0, 56), (SCREEN_WIDTH, 56), 2)
 
         lx = 20
-        if self.logo_img:
+        logo_w = self.logo_img.get_width() if self.logo_img else 67
+        if show_logo and self.logo_img:
             self.screen.blit(self.logo_img, (lx, 7))
-            lx += self.logo_img.get_width() + 14
+        lx += logo_w + 14
 
         title_text = custom_title if custom_title else "STATION NORTH"
         title_surf = self._load_font(24, bold=True).render(title_text, True, NORD6)
