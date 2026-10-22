@@ -25,20 +25,33 @@ cd "$GAMEDIR"
 # Auto-Registrierung in EmulationStation gamelist.xml (Screenshot, Beschreibung & Metadaten)
 GAMELIST_XML="$(dirname "$GAMEDIR")/gamelist.xml"
 if [ -f "$GAMELIST_XML" ] && [ -f "$GAMEDIR/gameinfo.xml" ]; then
-  if ! grep -q "SNfetchPLAYER.sh" "$GAMELIST_XML"; then
-    python3 -c "
+  python3 -c "
 import xml.etree.ElementTree as ET
 try:
     g_tree = ET.parse('$GAMELIST_XML')
     g_root = g_tree.getroot()
     i_tree = ET.parse('$GAMEDIR/gameinfo.xml')
-    for g in i_tree.getroot().findall('game'):
-        g_root.append(g)
-    g_tree.write('$GAMELIST_XML', encoding='utf-8', xml_declaration=True)
+    i_game = i_tree.getroot().find('game')
+    if i_game is not None:
+        target = None
+        for g in g_root.findall('game'):
+            p = g.find('path')
+            if p is not None and p.text and p.text.strip() in ('./SNfetchPLAYER.sh', 'SNfetchPLAYER.sh'):
+                target = g
+                break
+        if target is None:
+            g_root.append(i_game)
+        else:
+            for child in i_game:
+                existing = target.find(child.tag)
+                if existing is None:
+                    target.append(child)
+                else:
+                    existing.text = child.text
+        g_tree.write('$GAMELIST_XML', encoding='utf-8', xml_declaration=True)
 except Exception:
     pass
 " 2>/dev/null || true
-  fi
 fi
 
 # Logging aktivieren

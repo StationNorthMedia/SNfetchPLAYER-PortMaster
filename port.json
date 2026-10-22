@@ -1,9 +1,9 @@
 {
-  "version": 2,
+  "version": 4,
   "name": "snfetchplayer.zip",
   "items": [
     "SNfetchPLAYER.sh",
-    "snfetchplayer"
+    "snfetchplayer/"
   ],
   "items_opt": null,
   "attr": {
@@ -11,21 +11,41 @@
     "porter": [
       "Station North Media"
     ],
-    "desc": "Official Retro-Handheld Cyber-Deck & Media Player for Station North Radio, TV Broadcasts, and Chronicles lore.",
-    "inst": "Ready to run! Connect Wi-Fi for YouTube live audio streams and dynamic video broadcasts.",
+    "desc": "Official Cyberdeck Media Player for Station North: Live Radio with Dynamic AGC, 4:3 Television Broadcasts, and The Chronicles Voiceover Lore.",
+    "desc_md": null,
+    "inst": "Ready to run! Connect Wi-Fi for live audio streaming, TV video broadcasts, and automatic media downloads.",
+    "inst_md": null,
     "genres": [
-      "media",
-      "music",
-      "video"
+      "other"
     ],
     "image": {
       "screenshot": "screenshot.png",
-      "cover": "cover.png"
+      "covers": [
+        "cover.png"
+      ],
+      "thumbnail": null,
+      "video": null
     },
-    "rtr": false,
-    "runtime": "python3",
+    "rtr": true,
+    "exp": false,
+    "runtime": [],
+    "store": [],
+    "availability": "full",
     "reqs": [
       "wifi"
-    ]
+    ],
+    "arch": [
+      "aarch64"
+    ],
+    "min_glibc": ""
+  },
+  "status": {
+    "source": "PortMaster",
+    "status": "Installed"
+  },
+  "files": {
+    "port.json": "snfetchplayer/port.json",
+    "SNfetchPLAYER.sh": "SNfetchPLAYER.sh",
+    "snfetchplayer/": "snfetchplayer/"
   }
 }
