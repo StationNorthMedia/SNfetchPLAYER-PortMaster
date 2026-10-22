@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "name": "snfetchplayer.zip",
+  "items": [
+    "SNfetchPLAYER.sh",
+    "snfetchplayer"
+  ],
+  "items_opt": null,
+  "attr": {
+    "title": "Station North SNfetchPLAYER",
+    "porter": [
+      "Station North Media"
+    ],
+    "desc": "Official Retro-Handheld Cyber-Deck & Media Player for Station North Radio, TV Broadcasts, and Chronicles lore.",
+    "inst": "Ready to run! Connect Wi-Fi for YouTube live audio streams and dynamic video broadcasts.",
+    "genres": [
+      "media",
+      "music",
+      "video"
+    ],
+    "image": {},
+    "rtr": false,
+    "runtime": "python3",
+    "reqs": [
+      "wifi"
+    ]
+  }
+}
