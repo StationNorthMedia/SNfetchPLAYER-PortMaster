@@ -959,11 +959,10 @@ class SNfetchDashboard:
 
     def trigger_play_track_async(self, idx: int):
         with self._audio_lock:
-            self._resolve_id += 1
+            self.stop_audio()
             curr_id = self._resolve_id
             self.resolve_target_idx = idx
             self.is_resolving = True
-            self.stop_audio()
         self.resolve_thread = threading.Thread(target=self._resolve_and_play_worker, args=(idx, curr_id), daemon=True)
         self.resolve_thread.start()
 
@@ -2076,19 +2075,21 @@ class SNfetchDashboard:
     def _trigger_cockpit_action(self, idx: int):
         """Executes the action of the focused button (Android TV navigation model)"""
         if idx == 0:
-            # Fullscreen Mode [ ]
+            # Fullscreen Mode [ ] -> Plays Music Video in Fullscreen (4:3)
+            self.stop_audio()
+            self.launch_video_playback(self.current_idx, manual_trigger=True)
+            self._state_transition_time = time.time()
+            pygame.event.clear()
             if self.state == STATE_RADIO:
-                self.is_radio_zen_mode = not self.is_radio_zen_mode
-                self.radio_osd_visible = True
-                self.radio_osd_last_interaction = time.time()
-            elif self.state == STATE_TV:
-                self.launch_video_playback(self.current_idx, manual_trigger=True)
+                self.trigger_play_track_async(self.current_idx)
 
         elif idx == 1:
             # Previous Track
             self.current_idx = self.shuffle_mgr.step_prev()
             if self.state == STATE_RADIO:
                 self.trigger_play_track_async(self.current_idx)
+            elif self.state == STATE_TV:
+                self._update_quote()
 
         elif idx == 2:
             # Play / Pause
@@ -2106,6 +2107,8 @@ class SNfetchDashboard:
             self.current_idx = self.shuffle_mgr.advance_next()
             if self.state == STATE_RADIO:
                 self.trigger_play_track_async(self.current_idx)
+            elif self.state == STATE_TV:
+                self._update_quote()
 
         elif idx == 4:
             # Repeat Loop Toggle
@@ -2482,32 +2485,6 @@ class SNfetchDashboard:
 
         # --- RADIO MODE (ANDROID TV D-PAD FOCUS CURSOR) ---
         elif self.state == STATE_RADIO:
-            if self.is_radio_zen_mode:
-                if key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
-                    self.is_radio_zen_mode = False
-                    self.radio_osd_visible = True
-                    return True
-
-                if not self.radio_osd_visible:
-                    self.radio_osd_visible = True
-                    self.radio_osd_last_interaction = time.time()
-                    return True
-
-                self.radio_osd_last_interaction = time.time()
-                if key == pygame.K_LEFT:
-                    self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
-                elif key == pygame.K_RIGHT:
-                    self.cockpit_focus_idx = (self.cockpit_focus_idx + 1) % 5
-                elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
-                    self._trigger_cockpit_action(self.cockpit_focus_idx)
-                elif key in (pygame.K_f, pygame.K_x):
-                    self.is_radio_zen_mode = False
-                elif key in (pygame.K_p, pygame.K_PAUSE):
-                    self._trigger_cockpit_action(2)
-                elif key == pygame.K_y:
-                    self._trigger_cockpit_action(4)
-                return True
-
             if key == pygame.K_LEFT:
                 self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
             elif key == pygame.K_RIGHT:
@@ -2522,9 +2499,7 @@ class SNfetchDashboard:
                 pygame.event.clear()
                 return True
             elif key in (pygame.K_f, pygame.K_x):
-                self.is_radio_zen_mode = True
-                self.radio_osd_visible = True
-                self.radio_osd_last_interaction = time.time()
+                self._trigger_cockpit_action(0)
             elif key in (pygame.K_p, pygame.K_PAUSE):
                 self._trigger_cockpit_action(2)
             elif key == pygame.K_y:
@@ -2554,11 +2529,19 @@ class SNfetchDashboard:
                 pygame.event.clear()
                 return True
             elif key in (pygame.K_f, pygame.K_x):
-                self.launch_video_playback(self.current_idx, manual_trigger=True)
+                self._trigger_cockpit_action(0)
             elif key in (pygame.K_p, pygame.K_PAUSE):
                 self._trigger_cockpit_action(2)
             elif key == pygame.K_y:
                 self._trigger_cockpit_action(4)
+            elif key == pygame.K_UP:
+                self.station_mgr.increment_counter()
+                self.current_idx = self.shuffle_mgr.advance_previous()
+                self._update_quote()
+            elif key == pygame.K_DOWN:
+                self.station_mgr.increment_counter()
+                self.current_idx = self.shuffle_mgr.advance_next()
+                self._update_quote()
             return True
 
         # --- CHRONICLES ---
@@ -2731,10 +2714,7 @@ class SNfetchDashboard:
             if self.state == STATE_SPLASH:
                 self.draw_splash_screen()
             elif self.state == STATE_RADIO:
-                if self.is_radio_zen_mode:
-                    self.draw_radio_zen_mode()
-                else:
-                    self.draw_radio_dashboard()
+                self.draw_radio_dashboard()
             elif self.state == STATE_TV:
                 self.draw_tv_dashboard()
             elif self.state == STATE_CHRONICLES:
