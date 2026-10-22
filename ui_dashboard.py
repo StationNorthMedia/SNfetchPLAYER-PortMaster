@@ -626,6 +626,8 @@ class SNfetchDashboard:
         self.sync_error = ""
         self.sync_thread: Optional[threading.Thread] = None
 
+        self.splash_enter_time = time.time()
+
         # Load default Radio Playlist
         self._load_active_playlist(is_tv=False)
 
@@ -1149,9 +1151,9 @@ class SNfetchDashboard:
             if not Path(logo_path).exists():
                 logo_path = str(Path("sn_logo.png").resolve())
 
-            # 4:3 Display-Fill + 65% Logo Transparenz + Elegante Bauchbinde
+            # 4:3 Display-Fill + 65% Logo Transparenz + Elegante Bauchbinde (Crash-sicheres Scale & Crop)
             vf_filter = (
-                f"crop=ih*4/3:ih:(iw-ih*4/3)/2:0,scale=1024:768 [main]; "
+                f"scale=1024:768:force_original_aspect_ratio=increase,crop=1024:768 [main]; "
                 f"movie={logo_path},scale=175:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
                 f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26, "
                 f"ass='{osd_file}'"
@@ -1303,9 +1305,9 @@ class SNfetchDashboard:
                 except Exception:
                     pass
 
-            # If it exited quickly (< 8s) and was not a manual skip, it was an early abort
-            if action == "AUTO" and elapsed < 8.0:
-                action = "EXIT"
+            # If a video stream ends abnormally fast (< 3.0s) without user input, auto-advance to next video
+            if action == "AUTO" and elapsed < 3.0:
+                action = "NEXT"
 
             if action == "EXIT":
                 self.current_idx = curr_idx
@@ -1339,9 +1341,9 @@ class SNfetchDashboard:
         if not Path(logo_path).exists():
             logo_path = str(Path("sn_logo.png").resolve())
 
-        # 4:3 Display-Fill + 65% Logo Transparenz unten rechts
+        # 4:3 Display-Fill + 65% Logo Transparenz unten rechts (Crash-sicheres Scale & Crop)
         vf_filter = (
-            f"crop=ih*4/3:ih:(iw-ih*4/3)/2:0,scale=1024:768 [main]; "
+            f"scale=1024:768:force_original_aspect_ratio=increase,crop=1024:768 [main]; "
             f"movie={logo_path},scale=175:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
             f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26"
         )
@@ -2412,11 +2414,16 @@ class SNfetchDashboard:
                     self._load_active_playlist(is_tv=True)
                     self.launch_video_playback(self.current_idx, manual_trigger=True)
                     self.state = STATE_SPLASH
+                    self.splash_enter_time = time.time()
+                    pygame.event.clear()
+                    return True
                 elif self.splash_cursor == 2:
                     self.show_loading_screen("THE CHRONICLES", "Loading Comic & Voice Lore...")
                     self.state = STATE_CHRONICLES
+                    return True
             elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
-                return False
+                if time.time() - self.splash_enter_time > 0.8:
+                    return False
             return True
 
         # --- RADIO MODE (ANDROID TV D-PAD FOCUS CURSOR) ---
@@ -2456,6 +2463,9 @@ class SNfetchDashboard:
             elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
                 self.stop_audio()
                 self.state = STATE_SPLASH
+                self.splash_enter_time = time.time()
+                pygame.event.clear()
+                return True
             elif key in (pygame.K_f, pygame.K_x):
                 self.is_radio_zen_mode = True
                 self.radio_osd_visible = True
@@ -2484,6 +2494,9 @@ class SNfetchDashboard:
                 self._trigger_cockpit_action(self.cockpit_focus_idx)
             elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
                 self.state = STATE_SPLASH
+                self.splash_enter_time = time.time()
+                pygame.event.clear()
+                return True
             elif key in (pygame.K_f, pygame.K_x):
                 self.launch_video_playback(self.current_idx, manual_trigger=True)
             elif key in (pygame.K_p, pygame.K_PAUSE):
@@ -2507,6 +2520,9 @@ class SNfetchDashboard:
             elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
                 self.stop_chronicles_audio()
                 self.state = STATE_SPLASH
+                self.splash_enter_time = time.time()
+                pygame.event.clear()
+                return True
             return True
 
         # --- SETTINGS ---
