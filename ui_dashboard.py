@@ -1002,7 +1002,7 @@ class SNfetchDashboard:
                 "ffplay",
                 "-fs",
                 "-autoexit",
-                "-sync", "ext",
+                "-sync", "audio",
                 "-window_title", f"STATION NORTH • {track_artist} - {track_title}",
                 "-loglevel", "error",
                 "-vf", vf_filter,
@@ -1011,7 +1011,7 @@ class SNfetchDashboard:
 
             pygame.display.quit()
             play_start_time = time.time()
-            proc = subprocess.Popen(cmd)
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
 
             devices = self._get_input_devices()
             action = "AUTO"
@@ -1077,6 +1077,10 @@ class SNfetchDashboard:
                                         # Funktion 4: [X] & [Y] -> Repeat-One-Funktion (beide Tasten machen das Gleiche!)
                                         elif code in (307, 33, 308, 21):
                                             self.shuffle_mgr.toggle_repeat()
+
+                                        # D-Pad Oben / Unten abfangen (Verhindert 1-Minuten-Spulen in ffplay)
+                                        elif code in (103, 108, 544, 545):
+                                            pass
 
                                     elif event.type == evdev.ecodes.EV_ABS and event.code == 0:
                                         if event.value > 1200:
@@ -1187,14 +1191,14 @@ class SNfetchDashboard:
             "ffplay",
             "-fs",
             "-autoexit",
-            "-sync", "ext",
+            "-sync", "audio",
             "-window_title", "STATION NORTH TV IDENT",
             "-loglevel", "error",
             "-vf", vf_filter,
             str(clip_path)
         ]
         pygame.display.quit()
-        proc = subprocess.Popen(cmd)
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
 
         devices = self._get_input_devices()
         interrupted = False
