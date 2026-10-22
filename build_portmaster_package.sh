@@ -40,7 +40,7 @@ if [ -f "$SCRIPT_DIR/assets/catalog_manifest.json" ]; then
   cp "$SCRIPT_DIR/assets/catalog_manifest.json" "$PKG_DIR/assets/"
 fi
 
-# 5. ZIP-Paket erzeugen (Nutzt Pythons standardmäßiges zipfile-Modul)
+# 5. Standard ZIP-Paket erzeugen (ohne schwere Assets, In-App Download)
 mkdir -p "$DIST_DIR"
 cd "$STAGING_DIR"
 python3 -c "
@@ -54,9 +54,26 @@ with zipfile.ZipFile('$DIST_DIR/snfetchplayer.zip', 'w', zipfile.ZIP_DEFLATED) a
                 z.write(filepath, arcname)
 "
 
+# 6. Komplettpaket (Full Offline Bundle mit allen Assets) bauen
+if [ -d "$SCRIPT_DIR/assets" ]; then
+  echo "📦 Erstelle Komplettpaket mit allen Assets (snfetchplayer-full.zip)..."
+  cp -r "$SCRIPT_DIR/assets/"* "$PKG_DIR/assets/"
+  python3 -c "
+import zipfile, os
+with zipfile.ZipFile('$DIST_DIR/snfetchplayer-full.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk('.'):
+        for f in files:
+            if not f.endswith('.pyc') and '__pycache__' not in root:
+                filepath = os.path.join(root, f)
+                arcname = os.path.relpath(filepath, '.')
+                z.write(filepath, arcname)
+"
+fi
+
 echo "=========================================================="
-echo "✅ Fertig! Release-ZIP erstellt unter:"
-echo "   $DIST_DIR/snfetchplayer.zip"
-echo "Dieses ZIP kann direkt auf die SD-Karte unter /roms/ports/"
-echo "entpackt werden oder als GitHub Release hochgeladen werden!"
+echo "✅ Fertig! Release-Pakete erstellt unter:"
+echo "   1) Standard (128 KB):     $DIST_DIR/snfetchplayer.zip"
+echo "   2) Komplett (ca. 285 MB): $DIST_DIR/snfetchplayer-full.zip"
+echo "Beide ZIPs können direkt auf die SD-Karte unter /roms/ports/"
+echo "entpackt werden!"
 echo "=========================================================="
