@@ -120,14 +120,45 @@ We provide two installation flavors to fit your handheld setup:
 
 ---
 
-## 📁 Custom Playlists & Local Media
+## 📁 Dedicated Offline Media & Custom Playlist Folders
  
-Want to play your own offline music and video collection alongside The Queen's curated sets?
-Drop your MP3, FLAC, OGG, WAV, M4A, or MP4 files directly into:
+Want to bring your own personal music library or retro video collection onto your handheld?
+SNfetchPLAYER provides dedicated, auto-indexed repositories with pre-configured genre folders and comprehensive English guide files:
+
 ```text
-/roms/ports/snfetchplayer/playlists/
+/roms/ports/snfetchplayer/
+├── music/                     # Private Offline Music Deck
+│   ├── HipHop/                # Drop MP3, FLAC, M4A here -> "🎵 Music • HipHop"
+│   ├── Rock/                  # Drop Rock & Alternative audio -> "🎵 Music • Rock"
+│   └── README.txt             # Step-by-step format & naming guide
+├── videos/                    # Private Offline Video Deck
+│   ├── HipHop/                # Drop 480p music videos here -> "🎬 Video • HipHop"
+│   ├── Rock/                  # Drop Rock & Concert videos -> "🎬 Video • Rock"
+│   └── README.txt             # Downscaling tips & dual-mode guide
+└── playlists/                 # Online & Android JSON Channels
+    ├── main_top100.json       # Preloaded Station North Channels
+    ├── us_hiphop_top50.json
+    ├── us_rnb_top50.json
+    └── README.txt             # Android Companion App export instructions
 ```
-Navigate to **Settings -> Re-Scan Local Asset Storage** and your custom stations will be indexed automatically.
+
+### 📻 Dual Mode Compatibility: Videos in Radio & TV Modes
+- **In TV Mode**: Plays full-screen video scaled to 4:3 with the retro Station North crest watermark and animated lower-third title cards.
+- **In Radio Mode**: Did you know videos can be played as Radio stations? The player automatically strips and routes the audio into the **40-band real-time AGC spectrum analyzer**! Perfect for music videos, concert bootlegs, or YouTube lyric videos with static album covers.
+
+### ⚡ Pro-Tip: Downscaling Videos to 480p with `ffmpeg`
+Most retro handhelds (RK3326/RK3566) feature 640x480 displays. Encoding videos to 480p saves massive SD card space, reduces battery drain, and guarantees zero frame drops:
+
+```bash
+# 1) Downscale a single video to smooth 480p:
+ffmpeg -i "input_1080p.mp4" -vf "scale=640:-2" -c:v libx264 -crf 22 -preset fast -c:a aac -b:a 192k "Artist - Title.mp4"
+
+# 2) Batch-convert an entire folder of videos:
+for f in *.mp4 *.mkv; do ffmpeg -i "$f" -vf "scale=640:-2" -c:v libx264 -crf 22 -preset fast -c:a aac -b:a 192k "480p_${f%.*}.mp4"; done
+
+# 3) Extract pure MP3 audio from a video for the Music Deck:
+ffmpeg -i "video.mp4" -vn -c:a libmp3lame -q:a 2 "Artist - Title.mp3"
+```
  
 ---
  

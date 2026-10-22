@@ -740,10 +740,12 @@ class SNfetchDashboard:
         ALL_MEDIA_EXTS = MEDIA_AUDIO_EXTS | MEDIA_VIDEO_EXTS
 
         local_bases = [
+            Path("music"),
+            Path("/roms/ports/snfetchplayer/music"),
+            Path("videos"),
+            Path("/roms/ports/snfetchplayer/videos"),
             Path("playlists"),
             Path("/roms/ports/snfetchplayer/playlists"),
-            Path("music"),
-            Path("/roms/ports/snfetchplayer/music")
         ]
         seen_dirs = set()
 
@@ -757,6 +759,14 @@ class SNfetchDashboard:
             if resolved_b in seen_dirs:
                 continue
             seen_dirs.add(resolved_b)
+
+            b_name = b_dir.name.lower()
+            if "music" in b_name:
+                category_tag = "🎵 Music"
+            elif "video" in b_name:
+                category_tag = "🎬 Video"
+            else:
+                category_tag = "📁 Local"
 
             # 1. Media files directly in base directory
             root_tracks = []
@@ -782,12 +792,12 @@ class SNfetchDashboard:
 
             if root_tracks:
                 self.available_playlists.append({
-                    "title": f"Local • {b_dir.name.capitalize()}",
+                    "title": f"{category_tag} • All Tracks",
                     "path": str(b_dir.resolve()),
                     "items": root_tracks
                 })
 
-            # 2. Subdirectories inside base directory
+            # 2. Subdirectories inside base directory (e.g. music/HipHop, videos/Rock)
             try:
                 for sub in sorted(b_dir.iterdir()):
                     if sub.is_dir() and not sub.name.startswith("."):
@@ -809,9 +819,9 @@ class SNfetchDashboard:
                                     "is_video": item.suffix.lower() in MEDIA_VIDEO_EXTS
                                 })
                         if sub_tracks:
-                            label = sub.name.replace("_", " ").replace("-", " ").title()
+                            label = sub.name.replace("_", " ").replace("-", " ")
                             self.available_playlists.append({
-                                "title": f"Local • {label}",
+                                "title": f"{category_tag} • {label}",
                                 "path": str(sub.resolve()),
                                 "items": sub_tracks
                             })

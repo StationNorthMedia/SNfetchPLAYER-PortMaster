@@ -33,8 +33,16 @@ cp "$SCRIPT_DIR/screenshot.png" "$PKG_DIR/"
 cp "$SCRIPT_DIR/cover.png" "$PKG_DIR/"
 chmod +x "$PKG_DIR"/*.py
 
-# 4. Playlists & Manifest kopieren
+# 4. Playlists, Music, Videos & Manifest kopieren
 cp -r "$SCRIPT_DIR/playlists/"* "$PKG_DIR/playlists/"
+if [ -d "$SCRIPT_DIR/music" ]; then
+  mkdir -p "$PKG_DIR/music"
+  cp -r "$SCRIPT_DIR/music/"* "$PKG_DIR/music/"
+fi
+if [ -d "$SCRIPT_DIR/videos" ]; then
+  mkdir -p "$PKG_DIR/videos"
+  cp -r "$SCRIPT_DIR/videos/"* "$PKG_DIR/videos/"
+fi
 mkdir -p "$PKG_DIR/assets"
 if [ -f "$SCRIPT_DIR/assets/catalog_manifest.json" ]; then
   cp "$SCRIPT_DIR/assets/catalog_manifest.json" "$PKG_DIR/assets/"
