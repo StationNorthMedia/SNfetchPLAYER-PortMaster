@@ -25,44 +25,16 @@
 
 ---
 
-## 🌟 The Visual Tour
+## 🌟 The Visual Gallery
 
 SNfetchPLAYER transforms your gaming handheld into an authentic, standalone late-night media terminal. Built in Python 3 and SDL2/Pygame with exclusive hardware KMSDRM acceleration, it runs at silky 60 FPS with zero desktop overhead.
 
-### 1. The Command Deck • 3+2 Tile Matrix & Aurora Broadcasts
-![Main Menu](screenshots/01_main_menu.png)
-*Authentic Nord Aurora color palette with instant D-Pad matrix navigation. The lower sync card displays live asset statistics, high-speed download progress, and cycling quotes straight from **The Queen** in randomized Aurora hues.*
-
-### 2. Holographic 3D Boot Sequence
-![3D Splash](screenshots/02_3d_splash.png)
-*Dynamic Y-axis rotating metallic medallion with 3D depth extrusion, cool polar-night reverse shading, and ambient cyan radial glow. Smoothly docks into the top header upon startup. Press `[A]` to skip anytime.*
-
-### 3. The Queen's Frequency • High-Definition Radio
-<p align="center">
-  <img src="screenshots/03_radio_dashboard.png" width="48%" />
-  <img src="screenshots/04_radio_zen_fullscreen.png" width="48%" />
-</p>
-
-*Left: 2-Card Studio Stage with 40-band real-time audio visualizer, automatic gain control (AGC), 30px bold track typography, and chunky 5-button cockpit controls.*  
-*Right: **Zen Fullscreen Mode** (`[X]`) for ambient desk listening with watermark clock and auto-hiding cockpit.*
-
-### 4. Station North TV • 4:3 CRT Broadcast & Cyberdeck Buffer
-<p align="center">
-  <img src="screenshots/05_tv_dashboard.png" width="48%" />
-  <img src="screenshots/06_tv_video_loading.png" width="48%" />
-</p>
-
-*Left: Live retro monitor view scaling music videos seamlessly to handheld 4:3 displays with ASS lower-third 'Bauchbinden' banners and retro station idents.*  
-*Right: The redesigned **Broadcast Buffer Card** with channel badge, centered crest, and progress telemetry.*
-
-### 5. The Chronicles & System Deck
-<p align="center">
-  <img src="screenshots/07_the_chronicles.png" width="48%" />
-  <img src="screenshots/08_settings_handbook.png" width="48%" />
-</p>
-
-*Left: **The Chronicles** featuring deep-black canvas framing, original artwork, voiceover lore narration, and high-legibility 21px bold typography.*  
-*Right: **System Settings & Interactive Handbook** with 20px readable labels, live catalog switching, jingle rotation interval, and on-device manual.*
+| | |
+|:---:|:---:|
+| **01 • Command Deck (3+2 Matrix & Aurora Quotes)**<br><a href="screenshots/01_main_menu.png"><img src="screenshots/01_main_menu.png" width="460" alt="Main Menu" /></a><br><i>Authentic Nord Aurora cards, snappy 0.55 lerp cursor & live radio quotes.</i> | **02 • Holographic 3D Boot Sequence**<br><a href="screenshots/02_3d_splash.png"><img src="screenshots/02_3d_splash.png" width="460" alt="3D Splash" /></a><br><i>3D coin rotation with extrusion depth, mirrored reverse & header docking.</i> |
+| **03 • Radio Stage (40-Band AGC Visualizer)**<br><a href="screenshots/03_radio_dashboard.png"><img src="screenshots/03_radio_dashboard.png" width="460" alt="Radio Dashboard" /></a><br><i>Real-time audio visualizer, 30px bold typography & 5-button cockpit.</i> | **04 • Radio Zen Mode (Ambient Fullscreen)**<br><a href="screenshots/04_radio_zen_fullscreen.png"><img src="screenshots/04_radio_zen_fullscreen.png" width="460" alt="Zen Fullscreen" /></a><br><i>Full 440px spectrum analyzer, watermark clock & auto-hiding OSD.</i> |
+| **05 • Station North TV (4:3 CRT Broadcast)**<br><a href="screenshots/05_tv_dashboard.png"><img src="screenshots/05_tv_dashboard.png" width="460" alt="TV Dashboard" /></a><br><i>Continuous video broadcasts scaled to 4:3 with ASS lower-third banners.</i> | **06 • Broadcast Buffer Card (Loading Screen)**<br><a href="screenshots/06_tv_video_loading.png"><img src="screenshots/06_tv_video_loading.png" width="460" alt="TV Video Loading" /></a><br><i>Sleek cyberdeck buffer card with crest, channel badge & progress bar.</i> |
+| **07 • The Chronicles (Voiced Audio Comics)**<br><a href="screenshots/07_the_chronicles.png"><img src="screenshots/07_the_chronicles.png" width="460" alt="The Chronicles" /></a><br><i>Deep-black comic canvas with voiceover player & 21px legible story text.</i> | **08 • System Deck & Interactive Handbook**<br><a href="screenshots/08_settings_handbook.png"><img src="screenshots/08_settings_handbook.png" width="460" alt="Settings Handbook" /></a><br><i>20px settings typography with scrollable on-device user manual.</i> |
 
 ---
 
@@ -84,6 +56,42 @@ Universal PortMaster controller bindings with hardware debounce and anti-slip fi
 
 > [!NOTE]  
 > In the Main Menu, pressing `[B]` is safely locked against accidental app termination. Clean exit to EmulationStation is handled exclusively by selecting the red **#4 Exit Tile** and pressing `[A]`.
+
+---
+
+## 🕹️ Supported Hardware & Handheld Matrix (dArkOS / ArkOS)
+
+Station North SNfetchPLAYER is optimized for Rockchip RK3326 and related SoCs running **dArkOS** or **ArkOS**. It natively supports all **91 hardware console profiles and display panel revisions** found in `/boot/consoles`:
+
+### 🏆 Console Ecosystems
+
+| Category | Supported Handheld Models & Variants |
+|---|---|
+| **R-Series & Clones** | `R33S`, `R36H`, `R36H Pro Max`, `R36Pro`, `R36S+`, `R36T`, `R36T Max`, `R36 Ultra`, `R36 Ultra X`, `R36XX`, `R36Max (Type 1–3, Max2)`, `R40S`, `R40XX`, `R40XX Pro Max`, `R45H`, `R46H`, `R50H`, `R50S` |
+| **Anbernic** | `RG351P`, `RG351MP`, `RG351V (Panel 1 & 2)`, `RG36`, `RG36 Pro` |
+| **Powkiddy** | `RGB10`, `RGB10 Max 1`, `RGB10 Max 2`, `RGB10X`, `RGB20S`, `RGBV10` |
+| **MagicX & RF / XF Series** | `XU10`, `XF28`, `XF35H`, `XF40H`, `XF40V`, `XF45V`, `RF35H`, `RF40H`, `RF45H`, `RF45V`, `RF55H`, `RX6H`, `XGB36` |
+| **Mini & Pocket Devices** | `A10 Mini (v1 & v4)`, `D007`, `DC35V`, `DC40V`, `DC45V`, `DR28S`, `G350`, `GO2`, `H7`, `HG36`, `K36`, `K36S`, `Mini40`, `MyMini`, `O30S`, `RP1`, `RS16`, `T16Max` |
+| **Panel Revisions & Clones** | `Clone Type 1 (Panels 1–6, Amp/Invert)`, `Clone Type 2 (Panels 1–2, Amp)`, `Origin (Panels 0–4)`, `Sauce (Panels 1–5)`, `U8 (Panels 1–2)`, `V21 (Panel 4 Rumble Test)` |
+
+<details>
+<summary><b>🔍 View Complete Technical List of All 91 Console & Panel Targets (Click to expand)</b></summary>
+
+```text
+a10mini, a10miniv4, clone type1 panel1, clone type1 panel1 amp, clone type1 panel1 invert,
+clone type1 panel2, clone type1 panel3, clone type1 panel4, clone type1 panel5,
+clone type1 panel5 invert, clone type1 panel6, clone type2 panel1, clone type2 panel1 amp,
+clone type2 panel2, d007, dc35v, dc40v, dc45v, dr28s, g350, go2, h7, hg36, k36, k36s, mini40,
+mymini, o30s, origin panel0, origin panel1, origin panel2, origin panel3, origin panel4 type1,
+origin panel4 type2, r33s, r36h, r36hpromax, r36max type1, r36max type2, r36max type3, r36max2,
+r36pro, r36splus, r36t, r36tmax, r36ultra, r36ultrax, r36xx, r40s, r40xx, r40xxpromax, r45h,
+r46h, r50h, r50s, rf35h, rf40h, rf45h, rf45v, rf55h, rg351mp, rg351p, rg351v panel1,
+rg351v panel2, rg36, rg36pro, rgb10, rgb10max1, rgb10max2, rgb10x, rgb20s, rgbv10, rp1,
+rs16, rx6h, sauce panel1, sauce panel2, sauce panel3, sauce panel4, sauce panel5, t16max,
+u8 panel1, u8 panel2, v21 panel4 rumble test, xf28, xf35h, xf40h, xf40v, xf45v, xgb36, xu10
+```
+
+</details>
 
 ---
 

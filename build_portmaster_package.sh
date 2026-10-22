@@ -68,12 +68,24 @@ with zipfile.ZipFile('$DIST_DIR/snfetchplayer-full.zip', 'w', zipfile.ZIP_DEFLAT
                 arcname = os.path.relpath(filepath, '.')
                 z.write(filepath, arcname)
 "
+  echo "📦 Erstelle Standalone Medienpaket für In-App Downloader (snfetchplayer-assets.zip)..."
+  python3 -c "
+import zipfile, os
+with zipfile.ZipFile('$DIST_DIR/snfetchplayer-assets.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk('$PKG_DIR/assets'):
+        for f in files:
+            if not f.endswith('.pyc') and '__pycache__' not in root:
+                filepath = os.path.join(root, f)
+                arcname = os.path.relpath(filepath, '$PKG_DIR')
+                z.write(filepath, arcname)
+"
 fi
 
 echo "=========================================================="
 echo "✅ Fertig! Release-Pakete erstellt unter:"
 echo "   1) Standard (128 KB):     $DIST_DIR/snfetchplayer.zip"
 echo "   2) Komplett (ca. 285 MB): $DIST_DIR/snfetchplayer-full.zip"
+echo "   3) Assets (ca. 285 MB):   $DIST_DIR/snfetchplayer-assets.zip"
 echo "Beide ZIPs können direkt auf die SD-Karte unter /roms/ports/"
 echo "entpackt werden!"
 echo "=========================================================="

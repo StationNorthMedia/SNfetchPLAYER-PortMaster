@@ -930,6 +930,7 @@ class SNfetchDashboard:
             # If > 25 files are missing, download the full asset archive in one high-throughput stream
             if total_needed > 25:
                 bundle_urls = [
+                    "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v6.2.0/snfetchplayer-assets.zip",
                     "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v5.0.0/snfetchplayer-assets.zip",
                     "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v4.0.0/snfetchplayer-assets.zip"
                 ]
