@@ -22,6 +22,25 @@ GAMEDIR="/$directory/ports/snfetchplayer"
 
 cd "$GAMEDIR"
 
+# Auto-Registrierung in EmulationStation gamelist.xml (Screenshot, Beschreibung & Metadaten)
+GAMELIST_XML="$(dirname "$GAMEDIR")/gamelist.xml"
+if [ -f "$GAMELIST_XML" ] && [ -f "$GAMEDIR/gameinfo.xml" ]; then
+  if ! grep -q "SNfetchPLAYER.sh" "$GAMELIST_XML"; then
+    python3 -c "
+import xml.etree.ElementTree as ET
+try:
+    g_tree = ET.parse('$GAMELIST_XML')
+    g_root = g_tree.getroot()
+    i_tree = ET.parse('$GAMEDIR/gameinfo.xml')
+    for g in i_tree.getroot().findall('game'):
+        g_root.append(g)
+    g_tree.write('$GAMELIST_XML', encoding='utf-8', xml_declaration=True)
+except Exception:
+    pass
+" 2>/dev/null || true
+  fi
+fi
+
 # Logging aktivieren
 > "$GAMEDIR/log.txt" && exec > >(tee "$GAMEDIR/log.txt") 2>&1
 

@@ -14,7 +14,7 @@ echo "=========================================================="
 ssh $REMOTE_USER@$DEVICE_IP "mkdir -p $REMOTE_TARGET $REMOTE_TARGET/thumbnails $REMOTE_TARGET/playlists"
 
 # 2. Python-Dateien, Scripte und Konfiguration synchronisieren
-scp extractor.py osd_generator.py ui_dashboard.py sprueche.json playlist.json player.py snfetchplayer.gptk sn_logo.png $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/
+scp extractor.py osd_generator.py ui_dashboard.py sprueche.json playlist.json player.py snfetchplayer.gptk sn_logo.png screenshot.png cover.png gameinfo.xml port.json $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/
 ssh $REMOTE_USER@$DEVICE_IP "mkdir -p $REMOTE_TARGET/assets"
 scp assets/catalog_manifest.json $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/assets/
 

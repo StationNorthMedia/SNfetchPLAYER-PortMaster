@@ -18,7 +18,10 @@
       "music",
       "video"
     ],
-    "image": {},
+    "image": {
+      "screenshot": "screenshot.png",
+      "cover": "cover.png"
+    },
     "rtr": false,
     "runtime": "python3",
     "reqs": [

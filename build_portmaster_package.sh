@@ -28,6 +28,9 @@ cp "$SCRIPT_DIR/sn_logo.png" "$PKG_DIR/"
 cp "$SCRIPT_DIR/sprueche.json" "$PKG_DIR/"
 cp "$SCRIPT_DIR/playlist.json" "$PKG_DIR/"
 cp "$SCRIPT_DIR/port.json" "$PKG_DIR/"
+cp "$SCRIPT_DIR/gameinfo.xml" "$PKG_DIR/"
+cp "$SCRIPT_DIR/screenshot.png" "$PKG_DIR/"
+cp "$SCRIPT_DIR/cover.png" "$PKG_DIR/"
 chmod +x "$PKG_DIR"/*.py
 
 # 4. Playlists & Manifest kopieren
