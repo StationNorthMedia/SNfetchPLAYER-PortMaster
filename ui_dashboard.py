@@ -993,8 +993,8 @@ class SNfetchDashboard:
             # 4:3 Display-Fill + 65% Logo Transparenz + Elegante Bauchbinde
             vf_filter = (
                 f"crop=ih*4/3:ih:(iw-ih*4/3)/2:0,scale=1024:768 [main]; "
-                f"movie={logo_path},scale=120:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
-                f"[main][logo] overlay=main_w-overlay_w-25:main_h-overlay_h-25, "
+                f"movie={logo_path},scale=175:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
+                f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26, "
                 f"ass='{osd_file}'"
             )
 
@@ -1183,8 +1183,8 @@ class SNfetchDashboard:
         # 4:3 Display-Fill + 65% Logo Transparenz unten rechts
         vf_filter = (
             f"crop=ih*4/3:ih:(iw-ih*4/3)/2:0,scale=1024:768 [main]; "
-            f"movie={logo_path},scale=120:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
-            f"[main][logo] overlay=main_w-overlay_w-25:main_h-overlay_h-25"
+            f"movie={logo_path},scale=175:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
+            f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26"
         )
 
         cmd = [
@@ -2006,11 +2006,12 @@ class SNfetchDashboard:
             ("Single-Track Repeat Loop", "ENABLED (Repeat One)" if self.shuffle_mgr.is_repeat_mode else "DISABLED (Shuffle)"),
             ("Master Audio Volume", f"{self.hardware.get_master_volume()}%"),
             ("Screen Backlight Brightness", f"{self.hardware.get_brightness()}%"),
-            ("Re-Scan Local Asset Storage", "Press [A] to Trigger")
+            ("Re-Scan Local Asset Storage", "Press [A] to Trigger"),
+            ("📖 Open System Handbook", "Press [A] or [►] to Jump to Right Column")
         ]
 
         start_y = 82
-        row_h = 66
+        row_h = 58
         box_w = 480
 
         for i, (label, val) in enumerate(settings_items):
@@ -2018,25 +2019,31 @@ class SNfetchDashboard:
             r_rect = pygame.Rect(30, ry, box_w, row_h)
             is_sel = (i == self.settings_cursor and self.settings_column == 0)
 
-            bg_col = NORD1 if is_sel else (36, 41, 51)
-            b_col = NORD8 if is_sel else NORD2
+            # Highlight item 7 specially as an action button to the handbook
+            if i == 7:
+                bg_col = (46, 52, 64) if is_sel else (32, 38, 48)
+                b_col = NORD7 if is_sel else NORD3
+            else:
+                bg_col = NORD1 if is_sel else (36, 41, 51)
+                b_col = NORD8 if is_sel else NORD2
+
             pygame.draw.rect(self.screen, bg_col, r_rect, border_radius=12)
             pygame.draw.rect(self.screen, b_col, r_rect, width=2 if is_sel else 1, border_radius=12)
 
             l_col = NORD8 if is_sel else NORD6
-            l_surf = self._load_font(18, bold=True).render(label, True, l_col)
-            self.screen.blit(l_surf, (r_rect.x + 20, ry + 12))
+            l_surf = self._load_font(17, bold=True).render(label, True, l_col)
+            self.screen.blit(l_surf, (r_rect.x + 20, ry + 8))
 
-            val_col = NORD14 if "ENABLED" in val or "%" in val else NORD13
-            val_surf = self._load_font(15, bold=True).render(val, True, val_col)
-            self.screen.blit(val_surf, (r_rect.x + 20, ry + 36))
+            val_col = NORD7 if i == 7 else (NORD14 if "ENABLED" in val or "%" in val else NORD13)
+            val_surf = self._load_font(14, bold=True).render(val, True, val_col)
+            self.screen.blit(val_surf, (r_rect.x + 20, ry + 32))
 
             if is_sel:
-                pygame.draw.rect(self.screen, NORD8, (34, ry + 6, 6, row_h - 12), border_radius=3)
+                pygame.draw.rect(self.screen, NORD7 if i == 7 else NORD8, (34, ry + 6, 6, row_h - 12), border_radius=3)
 
         if self.settings_feedback_msg and (time.time() - self.settings_feedback_time < 3.0):
             fb_s = self._load_font(14, bold=True).render(self.settings_feedback_msg, True, NORD14)
-            self.screen.blit(fb_s, (30 + (box_w - fb_s.get_width()) // 2, start_y + len(settings_items) * (row_h + 8) + 6))
+            self.screen.blit(fb_s, (30 + (box_w - fb_s.get_width()) // 2, start_y + len(settings_items) * (row_h + 8) + 4))
 
         # --- RECHTE SPALTE: HANDBUCH, TV-STEUERUNG & CURATOR GUIDE (x=530, w=464) ---
         guide_x = 530
@@ -2053,7 +2060,7 @@ class SNfetchDashboard:
         gh_s = self._load_font(19, bold=True).render("STATION NORTH HANDBOOK", True, NORD8)
         self.screen.blit(gh_s, (guide_x + 20, guide_y + 14))
 
-        hint_text = "▲/▼ Scrollen • ◄/B Zurück" if is_guide_focused else "[X] oder [A] zum Scrollen"
+        hint_text = "[▲/▼] Scroll • [◄/B] Return" if is_guide_focused else "[A] or [►] on #8 to Focus"
         hint_col = NORD14 if is_guide_focused else NORD4
         hint_s = self._load_font(13, bold=True).render(hint_text, True, hint_col)
         self.screen.blit(hint_s, (guide_x + guide_w - hint_s.get_width() - 20, guide_y + 18))
@@ -2062,21 +2069,21 @@ class SNfetchDashboard:
 
         # Scrollbare Inhaltsoberflaeche fuer groessere, perfekt lesbare Schrift
         content_w = guide_w - 36
-        content_h = 760
+        content_h = 800
         content_surf = pygame.Surface((content_w, content_h), pygame.SRCALPHA)
         content_surf.fill((0, 0, 0, 0))
 
         gy = 4
 
         # Section 1: TV Player Controls (4 Funktionen)
-        t_sec = self._load_font(17, bold=True).render("📺 TV-PLAYER (4 FUNKTIONEN):", True, NORD7)
+        t_sec = self._load_font(17, bold=True).render("📺 TV CONTROLS (4 DEDICATED KEYS):", True, NORD7)
         content_surf.blit(t_sec, (4, gy))
         gy += 28
 
         ctrl_lines = [
             ("START", "Play / Pause Video (Toggle)"),
-            ("B", "Sofortiger Exit & Zurück zum Menü"),
-            ("◄ / ►", "Vorheriges / Nächstes Video (D-Pad & Stick)"),
+            ("B", "Instant Exit (0ms) & Return to Menu"),
+            ("◄ / ►", "Previous / Next Video (D-Pad & Stick)"),
             ("X / Y", "Single-Track Repeat Loop (Repeat One)")
         ]
         for key_btn, key_desc in ctrl_lines:
@@ -2091,15 +2098,15 @@ class SNfetchDashboard:
         gy += 14
 
         # Section 2: Eigene Playlists & Medien
-        m_sec = self._load_font(17, bold=True).render("📁 EIGENE MEDIEN & LISTEN:", True, NORD12)
+        m_sec = self._load_font(17, bold=True).render("📁 CUSTOM MEDIA & PLAYLISTS:", True, NORD12)
         content_surf.blit(m_sec, (4, gy))
         gy += 28
 
         msg1 = [
-            "Eigene Musik, Videos & Playlisten einfach im Ordner",
-            "/playlists/ auf der SD-Karte hinterlegen.",
-            "Unterstützt YouTube Streams, MP4/MKV Videos",
-            "sowie lokale MP3- und FLAC-Audiodateien."
+            "Drop your own music, videos & custom playlists directly",
+            "into the /playlists/ folder on your SD card.",
+            "Supports YouTube live streams, MP4/MKV videos,",
+            "and local high-fidelity MP3 and FLAC audio files."
         ]
         for line in msg1:
             ls = self._load_font(15).render(line, True, NORD4)
@@ -2116,10 +2123,10 @@ class SNfetchDashboard:
         gy += 28
 
         msg2 = [
-            "Die Station North Android-App besitzt einen CURATOR!",
-            "Erstelle & kuratiere Playlisten bequem am Smartphone,",
-            "um sie direkt per JSON für deinen dArkOS Handheld",
-            "zu exportieren und zu synchronisieren."
+            "The Station North Android App features a built-in CURATOR!",
+            "Easily curate and build your playlists on your smartphone,",
+            "then export them as JSON to synchronize directly",
+            "with your dArkOS / PortMaster gaming handheld."
         ]
         for line in msg2:
             ls = self._load_font(15).render(line, True, NORD4)
@@ -2131,14 +2138,14 @@ class SNfetchDashboard:
         gy += 14
 
         # Section 4: Radio Vollbild OSD
-        r_sec = self._load_font(17, bold=True).render("📻 RADIO VOLLBILD ON-SCREEN-MENÜ:", True, NORD8)
+        r_sec = self._load_font(17, bold=True).render("📻 RADIO FULLSCREEN COCKPIT (OSD):", True, NORD8)
         content_surf.blit(r_sec, (4, gy))
         gy += 28
 
         msg3 = [
-            "Mit [ ] / [X] startet der Vollbild-Visualizer.",
-            "Das 5-Button-Menü blendet nach 4 Sek. automatisch aus.",
-            "Jede Taste weckt das OSD auf • [B] beendet Vollbild."
+            "Press [X] to launch the fullscreen visualizer.",
+            "The 5-button cockpit automatically fades out after 4s.",
+            "Press any key to wake the menu • [B] exits fullscreen."
         ]
         for line in msg3:
             ls = self._load_font(15).render(line, True, NORD4)
@@ -2161,7 +2168,7 @@ class SNfetchDashboard:
             thumb_col = NORD8 if is_guide_focused else NORD2
             pygame.draw.rect(self.screen, thumb_col, (guide_x + guide_w - 13, thumb_y, 6, thumb_h), border_radius=3)
 
-        ctrl_text = "[▲/▼] Scrollen   [◄/B/X] Zurück zu Einstellungen" if is_guide_focused else "[▲/▼] Auswahl   [◄/►] Wert ändern   [X/A] Handbuch lesen   [Select/B] Zurück"
+        ctrl_text = "[▲/▼] Scroll Handbook   [◄/B] Return to Settings" if is_guide_focused else "[▲/▼] Navigate   [◄/►] Adjust   [A/►] Open Handbook   [Select/B] Close"
         self.draw_bottom_bar(custom_controls=ctrl_text)
 
     # =========================================================================
@@ -2339,16 +2346,22 @@ class SNfetchDashboard:
                     elif self.state == STATE_SETTINGS:
                         if self.settings_column == 0:
                             if event.key == pygame.K_UP:
-                                self.settings_cursor = (self.settings_cursor - 1) % 7
+                                self.settings_cursor = (self.settings_cursor - 1) % 8
                             elif event.key == pygame.K_DOWN:
-                                self.settings_cursor = (self.settings_cursor + 1) % 7
+                                self.settings_cursor = (self.settings_cursor + 1) % 8
                             elif event.key == pygame.K_LEFT:
-                                self._adjust_setting(delta=-1)
+                                if self.settings_cursor in (0, 1, 2, 3, 4, 5):
+                                    self._adjust_setting(delta=-1)
                             elif event.key == pygame.K_RIGHT:
-                                self._adjust_setting(delta=1)
+                                if self.settings_cursor in (6, 7):
+                                    self.settings_column = 1
+                                else:
+                                    self._adjust_setting(delta=1)
                             elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
                                 if self.settings_cursor == 6:
                                     self._execute_setting_action()
+                                elif self.settings_cursor == 7:
+                                    self.settings_column = 1
                                 else:
                                     self.settings_column = 1
                             elif event.key in (pygame.K_f, pygame.K_x, pygame.K_y, pygame.K_PAGEUP, pygame.K_PAGEDOWN):
