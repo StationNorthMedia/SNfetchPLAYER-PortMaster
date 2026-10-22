@@ -43,6 +43,10 @@ if [ -d "$SCRIPT_DIR/videos" ]; then
   mkdir -p "$PKG_DIR/videos"
   cp -r "$SCRIPT_DIR/videos/"* "$PKG_DIR/videos/"
 fi
+if [ -d "$SCRIPT_DIR/licenses" ]; then
+  mkdir -p "$PKG_DIR/licenses"
+  cp -r "$SCRIPT_DIR/licenses/"* "$PKG_DIR/licenses/"
+fi
 mkdir -p "$PKG_DIR/assets"
 if [ -f "$SCRIPT_DIR/assets/catalog_manifest.json" ]; then
   cp "$SCRIPT_DIR/assets/catalog_manifest.json" "$PKG_DIR/assets/"
