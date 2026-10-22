@@ -47,9 +47,17 @@ if [ -d "$SCRIPT_DIR/licenses" ]; then
   mkdir -p "$PKG_DIR/licenses"
   cp -r "$SCRIPT_DIR/licenses/"* "$PKG_DIR/licenses/"
 fi
+if [ -d "$SCRIPT_DIR/pylib" ]; then
+  mkdir -p "$PKG_DIR/pylib"
+  cp -r "$SCRIPT_DIR/pylib/"* "$PKG_DIR/pylib/"
+fi
 mkdir -p "$PKG_DIR/assets"
 if [ -f "$SCRIPT_DIR/assets/catalog_manifest.json" ]; then
   cp "$SCRIPT_DIR/assets/catalog_manifest.json" "$PKG_DIR/assets/"
+fi
+if [ -f "$SCRIPT_DIR/assets/comic/chronicles_data.json" ]; then
+  mkdir -p "$PKG_DIR/assets/comic"
+  cp "$SCRIPT_DIR/assets/comic/chronicles_data.json" "$PKG_DIR/assets/comic/"
 fi
 
 # 5. Standard ZIP-Paket erzeugen (ohne schwere Assets, In-App Download)

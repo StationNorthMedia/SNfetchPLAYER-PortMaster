@@ -29,13 +29,16 @@ import random
 import threading
 import subprocess
 import signal
+import shutil
+import logging
 import urllib.request
 import urllib.parse
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
-# Audio output for ffplay / ALSA
-os.environ["SDL_AUDIODRIVER"] = "alsa"
+APP_DIR = Path(__file__).resolve().parent
+
+# Initialize Pygame with CFW default audio driver
 import pygame
 
 pygame.display.init()
@@ -49,6 +52,8 @@ pygame.event.set_blocked([
     pygame.JOYBUTTONDOWN,
     pygame.JOYBUTTONUP,
 ])
+
+DISPLAY_FLAGS = pygame.FULLSCREEN | getattr(pygame, "SCALED", 0)
 
 from extractor import get_stream
 from osd_generator import generate_osd_ass
@@ -122,8 +127,7 @@ STATE_SETTINGS     = 4
 class ShuffleQueueManager:
     """Manages non-repeating shuffle queues across sessions and handles single-track repeat"""
     def __init__(self, state_file: str = "shuffle_state.json"):
-        base_dir = Path("/roms/ports/snfetchplayer") if Path("/roms/ports/snfetchplayer").exists() else Path(".")
-        self.state_file = base_dir / state_file
+        self.state_file = APP_DIR / state_file
         self.is_repeat_mode: bool = False
         self.shuffle_queue: List[int] = []
         self.history: List[int] = []
@@ -426,8 +430,8 @@ class ThumbnailManager:
                 return self.cache[cache_key]
 
         candidate_paths = [
+            APP_DIR / f"thumbnails/{youtube_id}.jpg",
             Path(f"thumbnails/{youtube_id}.jpg"),
-            Path(f"/roms/ports/snfetchplayer/thumbnails/{youtube_id}.jpg"),
             Path(f"/tmp/sn_thumb_{youtube_id}.jpg")
         ]
 
@@ -459,7 +463,7 @@ class ThumbnailManager:
         return self._create_placeholder(title, size=sz)
 
     def _fetch_thumb(self, youtube_id: str):
-        local_path = Path(f"/roms/ports/snfetchplayer/thumbnails/{youtube_id}.jpg")
+        local_path = APP_DIR / f"thumbnails/{youtube_id}.jpg"
         if not local_path.parent.exists():
             local_path = Path(f"/tmp/sn_thumb_{youtube_id}.jpg")
         url = f"https://img.youtube.com/vi/{youtube_id}/hqdefault.jpg"
@@ -503,7 +507,7 @@ class StationContentManager:
         self._scan_station_assets()
 
     def _scan_station_assets(self):
-        base_dirs = [Path("assets"), Path("/roms/ports/snfetchplayer/assets"), Path(".")]
+        base_dirs = [APP_DIR / "assets", Path("assets"), Path(".")]
         for b in base_dirs:
             j_dir = b / "jingles"
             if j_dir.exists():
@@ -553,8 +557,17 @@ class SNfetchDashboard:
         self.state = STATE_SPLASH
         self.previous_state = STATE_RADIO
 
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Station North • SNfetchPLAYER v5.0")
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+        except Exception as e:
+            logging.warning(f"Could not init pygame.mixer: {e}")
+
+        self.audio_sink_args = self._detect_ffmpeg_audio_sink()
+
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
+        pygame.display.set_caption("Station North • SNfetchPLAYER")
+        pygame.mouse.set_visible(False)
         self.clock = pygame.time.Clock()
 
         # Fonts (Elevated for high legibility on 3.5" handheld display)
@@ -661,6 +674,33 @@ class SNfetchDashboard:
         # Start asset sync check in background
         self._start_background_asset_sync()
 
+    def _detect_ffmpeg_audio_sink(self) -> List[str]:
+        # Check pulse first (standard on ROCKNIX / modern CFWs with PipeWire / PulseAudio)
+        try:
+            res = subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "quiet", "-f", "lavfi", "-i", "anullsrc", "-t", "0.02", "-f", "pulse", "default"],
+                timeout=0.4
+            )
+            if res.returncode == 0:
+                logging.info("Audio Sink: PulseAudio / PipeWire detected.")
+                return ["-f", "pulse", "default"]
+        except Exception:
+            pass
+
+        # Try ALSA default
+        try:
+            res = subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "quiet", "-f", "lavfi", "-i", "anullsrc", "-t", "0.02", "-f", "alsa", "default"],
+                timeout=0.4
+            )
+            if res.returncode == 0:
+                logging.info("Audio Sink: ALSA default detected.")
+                return ["-f", "alsa", "default"]
+        except Exception:
+            pass
+
+        return ["-f", "alsa", "default"]
+
     def _load_font(self, size: int, bold=False, italic=False) -> pygame.font.Font:
         try:
             for name in ["dejavusans", "freesans", "arial", "helvetica", "sans"]:
@@ -672,7 +712,7 @@ class SNfetchDashboard:
         return pygame.font.Font(None, size)
 
     def _load_logo(self) -> Optional[pygame.Surface]:
-        paths = [Path("sn_logo.png"), Path("/roms/ports/snfetchplayer/sn_logo.png")]
+        paths = [APP_DIR / "sn_logo.png", Path("sn_logo.png")]
         for p in paths:
             if p.exists():
                 try:
@@ -686,7 +726,7 @@ class SNfetchDashboard:
         return None
 
     def _load_large_logo(self) -> Optional[pygame.Surface]:
-        paths = [Path("sn_logo.png"), Path("/roms/ports/snfetchplayer/sn_logo.png")]
+        paths = [APP_DIR / "sn_logo.png", Path("sn_logo.png")]
         for p in paths:
             if p.exists():
                 try:
@@ -701,10 +741,10 @@ class SNfetchDashboard:
     def _discover_playlists(self):
         self.available_playlists = []
         dirs_to_check = [
+            APP_DIR / "assets/playlists",
+            APP_DIR / "playlists",
             Path("assets/playlists"),
             Path("playlists"),
-            Path("/roms/ports/snfetchplayer/assets/playlists"),
-            Path("/roms/ports/snfetchplayer/playlists"),
             Path(".")
         ]
         found_paths = {}
@@ -740,12 +780,12 @@ class SNfetchDashboard:
         ALL_MEDIA_EXTS = MEDIA_AUDIO_EXTS | MEDIA_VIDEO_EXTS
 
         local_bases = [
+            APP_DIR / "music",
+            APP_DIR / "videos",
+            APP_DIR / "playlists",
             Path("music"),
-            Path("/roms/ports/snfetchplayer/music"),
             Path("videos"),
-            Path("/roms/ports/snfetchplayer/videos"),
             Path("playlists"),
-            Path("/roms/ports/snfetchplayer/playlists"),
         ]
         seen_dirs = set()
 
@@ -853,7 +893,7 @@ class SNfetchDashboard:
 
     def _load_quotes(self):
         self.quotes = []
-        for q_path in [Path("sprueche.json"), Path("/roms/ports/snfetchplayer/sprueche.json")]:
+        for q_path in [APP_DIR / "sprueche.json", Path("sprueche.json")]:
             if q_path.exists():
                 try:
                     with open(q_path, "r", encoding="utf-8") as f:
@@ -911,8 +951,8 @@ class SNfetchDashboard:
 
     def _load_chronicles(self):
         paths = [
-            Path("assets/comic/chronicles_data.json"),
-            Path("/roms/ports/snfetchplayer/assets/comic/chronicles_data.json")
+            APP_DIR / "assets/comic/chronicles_data.json",
+            Path("assets/comic/chronicles_data.json")
         ]
         for p in paths:
             if p.exists():
@@ -943,11 +983,9 @@ class SNfetchDashboard:
         """Asynchronously downloads missing 480p TV idents, Jingles and Comics from GitHub"""
         try:
             # 1. Base directory detection
-            base_dir = Path("assets")
-            if not base_dir.exists() and Path("/roms/ports/snfetchplayer/assets").exists():
-                base_dir = Path("/roms/ports/snfetchplayer/assets")
+            base_dir = APP_DIR / "assets"
             base_dir.mkdir(parents=True, exist_ok=True)
-            app_dir = base_dir.resolve().parent
+            app_dir = APP_DIR
 
             manifest_path = base_dir / "catalog_manifest.json"
             manifest = None
@@ -1138,7 +1176,7 @@ class SNfetchDashboard:
     def show_loading_screen(self, title: str = "STATION NORTH TV", subtitle: str = "Initializing Audio Stream..."):
         if not pygame.display.get_init():
             pygame.display.init()
-            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
             pygame.mouse.set_visible(False)
 
         self.screen.fill(NORD0)
@@ -1280,7 +1318,7 @@ class SNfetchDashboard:
                         "ffmpeg", "-y",
                         "-i", str(jingle_path),
                         "-filter_complex", "[0:a]asplit=2[out1][out2]",
-                        "-map", "[out1]", "-f", "alsa", "default",
+                        "-map", "[out1]", *self.audio_sink_args,
                         "-map", "[out2]", "-f", "s16le", "-ac", "1", "-ar", "22050", "-"
                     ]
                     with self._audio_lock:
@@ -1340,7 +1378,7 @@ class SNfetchDashboard:
                     "ffmpeg", "-y",
                     "-i", stream_url,
                     "-filter_complex", "[0:a]asplit=2[out1][out2]",
-                    "-map", "[out1]", "-f", "alsa", "default",
+                    "-map", "[out1]", *self.audio_sink_args,
                     "-map", "[out2]", "-f", "s16le", "-ac", "1", "-ar", "22050", "-"
                 ]
                 with self._audio_lock:
@@ -1459,7 +1497,7 @@ class SNfetchDashboard:
 
             if not pygame.display.get_init():
                 pygame.display.init()
-                self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+                self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
                 pygame.mouse.set_visible(False)
 
             track = self.playlist[curr_idx]
@@ -1478,7 +1516,7 @@ class SNfetchDashboard:
                         break
                     if not pygame.display.get_init():
                         pygame.display.init()
-                        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+                        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
                         pygame.mouse.set_visible(False)
                     self.show_loading_screen("STATION NORTH TV", f"Loading Video: {track_artist} - {track_title}")
 
@@ -1498,6 +1536,9 @@ class SNfetchDashboard:
                 stream_url, _ = get_stream(yt_id, prefer_audio_only=False)
 
             if not stream_url:
+                logging.warning(f"Could not resolve stream for '{track_title}'. Checking next track...")
+                self.show_loading_screen("STREAM RESOLVER", f"Unable to resolve stream: {track_title}\nChecking connection...")
+                time.sleep(1.0)
                 curr_idx = self.shuffle_mgr.advance_next()
                 show_osd_this_track = False
                 continue
@@ -1505,9 +1546,8 @@ class SNfetchDashboard:
             # Bauchbinde via nativem ASS-Untertitel (blendet sanft ein und nach 4.8s automatisch aus)
             osd_file = generate_osd_ass(track, show_osd=True, is_repeat=self.shuffle_mgr.is_repeat_mode)
 
-            logo_path = "/roms/ports/snfetchplayer/sn_logo.png"
-            if not Path(logo_path).exists():
-                logo_path = str(Path("sn_logo.png").resolve())
+            logo_file = APP_DIR / "sn_logo.png"
+            logo_path = str(logo_file) if logo_file.exists() else str(Path("sn_logo.png").resolve())
 
             is_audio_only = is_local and Path(stream_url).suffix.lower() in {".mp3", ".flac", ".ogg", ".wav", ".m4a", ".opus", ".aac"}
             if not is_audio_only:
@@ -1547,9 +1587,29 @@ class SNfetchDashboard:
                     stream_url
                 ]
 
-            pygame.display.quit()
-            play_start_time = time.time()
-            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
+            player_bin = "ffplay" if shutil.which("ffplay") else ("mpv" if shutil.which("mpv") else None)
+            if not player_bin:
+                logging.error("Neither ffplay nor mpv found on device.")
+                self.show_loading_screen("VIDEO PLAYER NOT FOUND", "Install ffplay or mpv for video playback")
+                time.sleep(2.0)
+                return
+
+            if player_bin == "mpv":
+                cmd = ["mpv", "--fs", "--no-terminal", f"--title=STATION NORTH • {track_artist} - {track_title}", stream_url]
+
+            try:
+                pygame.display.quit()
+                play_start_time = time.time()
+                proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
+            except Exception as e:
+                logging.error(f"Failed to launch video player: {e}")
+                if not pygame.display.get_init():
+                    pygame.display.init()
+                    self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
+                    pygame.mouse.set_visible(False)
+                self.show_loading_screen("PLAYBACK ERROR", f"Cannot launch video player: {e}")
+                time.sleep(2.0)
+                return
 
             devices = self._get_input_devices()
             action = "AUTO"
@@ -1706,17 +1766,16 @@ class SNfetchDashboard:
 
         if not pygame.display.get_init():
             pygame.display.init()
-            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
             pygame.mouse.set_visible(False)
-        pygame.display.set_caption("Station North • SNfetchPLAYER v5.0")
+        pygame.display.set_caption("Station North • SNfetchPLAYER")
         time.sleep(0.12)
         pygame.event.clear()
         self.is_playing = False
 
     def _play_tv_station_id_fullscreen(self, clip_path: Path) -> bool:
-        logo_path = "/roms/ports/snfetchplayer/sn_logo.png"
-        if not Path(logo_path).exists():
-            logo_path = str(Path("sn_logo.png").resolve())
+        logo_file = APP_DIR / "sn_logo.png"
+        logo_path = str(logo_file) if logo_file.exists() else str(Path("sn_logo.png").resolve())
 
         # 4:3 Display-Fill + 65% Logo Transparenz unten rechts (Crash-sicheres Scale & Crop)
         vf_filter = (
@@ -1725,18 +1784,35 @@ class SNfetchDashboard:
             f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26"
         )
 
-        cmd = [
-            "ffplay",
-            "-fs",
-            "-autoexit",
-            "-sync", "audio",
-            "-window_title", "STATION NORTH TV IDENT",
-            "-loglevel", "error",
-            "-vf", vf_filter,
-            str(clip_path)
-        ]
-        pygame.display.quit()
-        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
+        player_bin = "ffplay" if shutil.which("ffplay") else ("mpv" if shutil.which("mpv") else None)
+        if not player_bin:
+            logging.warning("Video player not found for TV station ID.")
+            return True
+
+        if player_bin == "mpv":
+            cmd = ["mpv", "--fs", "--no-terminal", "--title=STATION NORTH TV IDENT", str(clip_path)]
+        else:
+            cmd = [
+                "ffplay",
+                "-fs",
+                "-autoexit",
+                "-sync", "audio",
+                "-window_title", "STATION NORTH TV IDENT",
+                "-loglevel", "error",
+                "-vf", vf_filter,
+                str(clip_path)
+            ]
+
+        try:
+            pygame.display.quit()
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
+        except Exception as e:
+            logging.error(f"Failed to play TV ID: {e}")
+            if not pygame.display.get_init():
+                pygame.display.init()
+                self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
+                pygame.mouse.set_visible(False)
+            return True
 
         devices = self._get_input_devices()
         interrupted = False
@@ -1806,6 +1882,11 @@ class SNfetchDashboard:
     # --- CHRONICLES AUDIO (FAITH NARRATION) ---
     def stop_chronicles_audio(self):
         with self._audio_lock:
+            try:
+                if pygame.mixer.get_init():
+                    pygame.mixer.music.stop()
+            except Exception:
+                pass
             proc = self.chronicles_proc
             self.chronicles_proc = None
             self.chronicles_playing = False
@@ -1831,8 +1912,8 @@ class SNfetchDashboard:
         panel_id = item.get("id", self.chronicles_idx + 1)
         audio_name = f"p_{panel_id:03d}.mp3"
         audio_paths = [
-            Path("assets/comic/audio") / audio_name,
-            Path("/roms/ports/snfetchplayer/assets/comic/audio") / audio_name
+            APP_DIR / "assets/comic/audio" / audio_name,
+            Path("assets/comic/audio") / audio_name
         ]
         target_path = None
         for ap in audio_paths:
@@ -1842,9 +1923,35 @@ class SNfetchDashboard:
 
         if target_path:
             self.stop_chronicles_audio()
-            cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(target_path)]
-            self.chronicles_proc = subprocess.Popen(cmd)
-            self.chronicles_playing = True
+            played = False
+            # 1. Native Pygame Mixer (Internal, no external binary dependency, zero crash risk)
+            try:
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+                pygame.mixer.music.load(str(target_path))
+                pygame.mixer.music.play()
+                self.chronicles_playing = True
+                played = True
+                logging.info(f"Playing Chronicles narration via pygame.mixer: {target_path}")
+            except Exception as mix_err:
+                logging.warning(f"pygame.mixer narration error: {mix_err}")
+
+            # 2. Subprocess fallback if mixer is unavailable
+            if not played:
+                try:
+                    player = "ffplay" if shutil.which("ffplay") else ("aplay" if shutil.which("aplay") else None)
+                    if player == "ffplay":
+                        cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(target_path)]
+                        self.chronicles_proc = subprocess.Popen(cmd)
+                        self.chronicles_playing = True
+                    elif player == "aplay":
+                        cmd = ["aplay", "-q", str(target_path)]
+                        self.chronicles_proc = subprocess.Popen(cmd)
+                        self.chronicles_playing = True
+                except Exception as sub_err:
+                    logging.error(f"Narration subprocess error: {sub_err}")
+        else:
+            logging.warning(f"Voiceover audio file '{audio_name}' not found. Please sync media assets in Settings.")
 
     # =========================================================================
     # RENDER HELPER: THE 5-BUTTON PASTEL COCKPIT (MATCHING ANDROID APP)
@@ -2781,8 +2888,8 @@ class SNfetchDashboard:
 
         if image_name not in self.chronicles_img_cache:
             img_paths = [
-                Path("assets/comic") / image_name,
-                Path("/roms/ports/snfetchplayer/assets/comic") / image_name
+                APP_DIR / "assets/comic" / image_name,
+                Path("assets/comic") / image_name
             ]
             loaded_surf = None
             for ip in img_paths:
@@ -3366,7 +3473,17 @@ class SNfetchDashboard:
                 self.trigger_play_track_async(self.current_idx)
 
             # Auto-Advance in Chronicles
-            if self.state == STATE_CHRONICLES and self.chronicles_proc and self.chronicles_proc.poll() is not None:
+            chronicles_finished = False
+            if self.state == STATE_CHRONICLES and self.chronicles_playing:
+                try:
+                    if pygame.mixer.get_init() and not pygame.mixer.music.get_busy() and not self.chronicles_proc:
+                        chronicles_finished = True
+                except Exception:
+                    pass
+                if self.chronicles_proc and self.chronicles_proc.poll() is not None:
+                    chronicles_finished = True
+
+            if chronicles_finished:
                 self.chronicles_proc = None
                 self.chronicles_playing = False
                 if self.chronicles_idx < len(self.chronicles_data) - 1:
