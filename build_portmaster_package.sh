@@ -30,8 +30,12 @@ cp "$SCRIPT_DIR/playlist.json" "$PKG_DIR/"
 cp "$SCRIPT_DIR/port.json" "$PKG_DIR/"
 chmod +x "$PKG_DIR"/*.py
 
-# 4. Playlists kopieren
+# 4. Playlists & Manifest kopieren
 cp -r "$SCRIPT_DIR/playlists/"* "$PKG_DIR/playlists/"
+mkdir -p "$PKG_DIR/assets"
+if [ -f "$SCRIPT_DIR/assets/catalog_manifest.json" ]; then
+  cp "$SCRIPT_DIR/assets/catalog_manifest.json" "$PKG_DIR/assets/"
+fi
 
 # 5. ZIP-Paket erzeugen (Nutzt Pythons standardmäßiges zipfile-Modul)
 mkdir -p "$DIST_DIR"

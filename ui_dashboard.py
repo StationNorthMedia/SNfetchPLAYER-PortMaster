@@ -29,6 +29,8 @@ import random
 import threading
 import subprocess
 import signal
+import urllib.request
+import urllib.parse
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
@@ -38,6 +40,8 @@ import pygame
 
 pygame.display.init()
 pygame.font.init()
+if not pygame.joystick.get_init():
+    pygame.joystick.init()
 
 from extractor import get_stream
 from osd_generator import generate_osd_ass
@@ -601,8 +605,32 @@ class SNfetchDashboard:
         self.settings_feedback_msg = ""
         self.settings_feedback_time = 0.0
 
+        # Direct Pygame Gamepad / Joystick initialization (Redundant fallback alongside gptokeyb)
+        self.joysticks = []
+        try:
+            for j_idx in range(pygame.joystick.get_count()):
+                joy = pygame.joystick.Joystick(j_idx)
+                joy.init()
+                self.joysticks.append(joy)
+        except Exception:
+            pass
+        self._last_axis_time = 0.0
+
+        # In-App Background Asset Downloader
+        self.sync_active = False
+        self.sync_total_items = 0
+        self.sync_downloaded_items = 0
+        self.sync_current_file = ""
+        self.sync_pct = 0.0
+        self.sync_status_text = ""
+        self.sync_error = ""
+        self.sync_thread: Optional[threading.Thread] = None
+
         # Load default Radio Playlist
         self._load_active_playlist(is_tv=False)
+
+        # Start asset sync check in background
+        self._start_background_asset_sync()
 
     def _load_font(self, size: int, bold=False, italic=False) -> pygame.font.Font:
         try:
@@ -736,6 +764,137 @@ class SNfetchDashboard:
         expected = 174 + 42 + 98
         pct = min(100.0, (total / expected) * 100.0) if expected > 0 else 0.0
         return j_count, t_count, c_count, total, pct
+
+    def _start_background_asset_sync(self):
+        """Starts background daemon thread to check and download missing media assets"""
+        if self.sync_thread and self.sync_thread.is_alive():
+            return
+        self.sync_thread = threading.Thread(target=self._run_asset_sync, daemon=True)
+        self.sync_thread.start()
+
+    def _run_asset_sync(self):
+        """Asynchronously downloads missing 480p TV idents, Jingles and Comics from GitHub"""
+        try:
+            # 1. Base directory detection
+            base_dir = Path("assets")
+            if not base_dir.exists() and Path("/roms/ports/snfetchplayer/assets").exists():
+                base_dir = Path("/roms/ports/snfetchplayer/assets")
+            base_dir.mkdir(parents=True, exist_ok=True)
+
+            manifest_path = base_dir / "catalog_manifest.json"
+            manifest = None
+
+            if manifest_path.exists():
+                try:
+                    with open(manifest_path, "r", encoding="utf-8") as f:
+                        manifest = json.load(f)
+                except Exception:
+                    manifest = None
+
+            if not manifest:
+                self.sync_status_text = "Fetching asset catalog from GitHub..."
+                manifest_url = "https://raw.githubusercontent.com/StationNorthMedia/SNfetchPLAYER-PortMaster/main/assets/catalog_manifest.json"
+                req = urllib.request.Request(manifest_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/5.0"})
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    raw_data = resp.read().decode("utf-8")
+                    manifest = json.loads(raw_data)
+                    with open(manifest_path, "w", encoding="utf-8") as f:
+                        f.write(raw_data)
+
+            if not manifest:
+                return
+
+            tv_list = manifest.get("tv_ids", [])
+            jingle_list = manifest.get("jingles", [])
+            comic_list = manifest.get("comic", [])
+
+            tv_dir = base_dir / "tv_ids"
+            jingle_dir = base_dir / "jingles"
+            comic_dir = base_dir / "comic"
+            tv_dir.mkdir(parents=True, exist_ok=True)
+            jingle_dir.mkdir(parents=True, exist_ok=True)
+            comic_dir.mkdir(parents=True, exist_ok=True)
+
+            # Build list of missing download tasks
+            tasks = []
+            for item in tv_list:
+                fname = item.get("name") or item.get("id")
+                url = item.get("url")
+                if fname and url:
+                    target = tv_dir / fname
+                    if not target.exists() or target.stat().st_size == 0:
+                        tasks.append(("TV Ident", fname, url, target))
+
+            for item in jingle_list:
+                fname = item.get("name") or item.get("id")
+                url = item.get("url")
+                if fname and url:
+                    target = jingle_dir / fname
+                    if not target.exists() or target.stat().st_size == 0:
+                        tasks.append(("Jingle", fname, url, target))
+
+            for item in comic_list:
+                cid = item.get("id")
+                curl = item.get("url")
+                if cid and curl:
+                    target = comic_dir / cid
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if not target.exists() or target.stat().st_size == 0:
+                        tasks.append(("Chronicles Lore", cid, curl, target))
+
+            total_needed = len(tasks)
+            if total_needed == 0:
+                self.sync_active = False
+                self.sync_pct = 100.0
+                self.sync_status_text = "All Station Assets Synchronized • 100% Ready"
+                self.station_mgr._scan_station_assets()
+                self._load_chronicles()
+                return
+
+            self.sync_active = True
+            self.sync_total_items = total_needed
+            self.sync_downloaded_items = 0
+
+            for idx, (itype, fname, raw_url, target) in enumerate(tasks, 1):
+                safe_url = urllib.parse.quote(raw_url, safe=":/?&=")
+                self.sync_current_file = fname
+                self.sync_downloaded_items = idx
+                self.sync_pct = (idx / total_needed) * 100.0
+                display_fname = fname if len(fname) <= 34 else fname[:31] + "..."
+                self.sync_status_text = f"Syncing {itype} ({idx}/{total_needed}): {display_fname}"
+
+                tmp_target = target.with_suffix(target.suffix + ".part")
+                try:
+                    req = urllib.request.Request(safe_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/5.0"})
+                    with urllib.request.urlopen(req, timeout=15) as resp, open(tmp_target, "wb") as out_f:
+                        while True:
+                            chunk = resp.read(65536)
+                            if not chunk:
+                                break
+                            out_f.write(chunk)
+                    if tmp_target.exists() and tmp_target.stat().st_size > 0:
+                        tmp_target.rename(target)
+                except Exception as dl_err:
+                    if tmp_target.exists():
+                        try:
+                            tmp_target.unlink()
+                        except Exception:
+                            pass
+                    time.sleep(0.3)
+
+                # Periodically update asset pool so items can be played immediately
+                if idx % 2 == 0 or idx == total_needed:
+                    self.station_mgr._scan_station_assets()
+                    self._load_chronicles()
+
+            self.sync_active = False
+            self.sync_pct = 100.0
+            self.sync_status_text = "All Station Assets Synchronized • 100% Ready"
+            self.station_mgr._scan_station_assets()
+            self._load_chronicles()
+        except Exception as e:
+            self.sync_active = False
+            self.sync_error = str(e)
 
     def show_loading_screen(self, title="STATION NORTH // LOADING...", subtitle="Initializing Audio Stream..."):
         if not pygame.display.get_init():
@@ -1565,19 +1724,55 @@ class SNfetchDashboard:
                 act_surf = self._load_font(14, bold=True).render("PRESS [A] TO LAUNCH", True, accent)
                 self.screen.blit(act_surf, (x + (card_w - act_surf.get_width()) // 2, card_y + 248))
 
-        # 3. Live-Asset-Ladebalken unten
+        # 3. Live-Asset-Ladebalken & Statusanzeige unten
         j_found, t_found, c_found, total_found, pct = self.get_asset_stats()
-        bar_w = 640
+        bar_w = 720
         bar_x = (SCREEN_WIDTH - bar_w) // 2
-        bar_y = card_y + card_h + 26
+        bar_y = card_y + card_h + 46
 
-        pygame.draw.rect(self.screen, COLOR_BAR_BG, (bar_x, bar_y, bar_w, 8), border_radius=4)
-        fill_w = max(4, int(bar_w * (pct / 100.0)))
-        pygame.draw.rect(self.screen, NORD8, (bar_x, bar_y, fill_w, 8), border_radius=4)
+        if self.sync_active:
+            disp_pct = max(self.sync_pct, pct)
+            hdr_text = f"⚡ SYNCHRONIZING ASSETS ({int(disp_pct)}%) • DOWNLOADING MEDIA..."
+            hdr_col = NORD8
+            sub_text = self.sync_status_text if self.sync_status_text else "Downloading missing media files from GitHub..."
+            sub_col = NORD5
+            hint_text = "💡 Engine is active! You can start Radio / TV now, or press [SELECT] for Settings."
+            hint_col = NORD13
+        elif pct >= 99.0:
+            hdr_text = "✅ ALL STATION MEDIA ASSETS SYNCHRONIZED (100% READY)"
+            hdr_col = NORD7
+            sub_text = f"174 Station Jingles  •  42 TV Idents (480p)  •  98 Chronicles Archive"
+            sub_col = NORD4
+            hint_text = "Press [A] to launch selected mode  •  Press [SELECT] to open Settings & System Handbook"
+            hint_col = NORD3
+        else:
+            hdr_text = f"⚠️ ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
+            hdr_col = NORD13
+            sub_text = f"Local Assets: {j_found}/174 Jingles  •  {t_found}/42 TV IDs  •  {c_found}/98 Chronicles"
+            sub_col = NORD4
+            hint_text = "Connect to Wi-Fi to sync 480p TV idents & jingles  •  Press [SELECT] for Settings"
+            hint_col = NORD12
 
-        status_text = f"Local Assets: {j_found}/174 Jingles • {t_found}/42 TV IDs • {c_found}/98 Chronicles ({int(pct)}% Ready)"
-        stat_surf = self._load_font(12, bold=True).render(status_text, True, NORD4)
-        self.screen.blit(stat_surf, (cx - stat_surf.get_width() // 2, bar_y + 14))
+        # 1. Headline above bar
+        hdr_surf = self._load_font(15, bold=True).render(hdr_text, True, hdr_col)
+        self.screen.blit(hdr_surf, (cx - hdr_surf.get_width() // 2, bar_y - 28))
+
+        # 2. Progress Bar Track & Fill
+        pygame.draw.rect(self.screen, NORD1, (bar_x, bar_y, bar_w, 10), border_radius=5)
+        pygame.draw.rect(self.screen, NORD2, (bar_x, bar_y, bar_w, 10), width=1, border_radius=5)
+
+        curr_pct = max(self.sync_pct, pct) if self.sync_active else pct
+        fill_w = max(6, int(bar_w * (min(100.0, curr_pct) / 100.0)))
+        bar_col = NORD8 if self.sync_active else (NORD7 if pct >= 99.0 else NORD13)
+        pygame.draw.rect(self.screen, bar_col, (bar_x, bar_y, fill_w, 10), border_radius=5)
+
+        # 3. Subtext below bar (Active file or item stats)
+        sub_surf = self._load_font(13).render(sub_text, True, sub_col)
+        self.screen.blit(sub_surf, (cx - sub_surf.get_width() // 2, bar_y + 16))
+
+        # 4. Helper prompt at the bottom
+        hint_surf = self._load_font(12, bold=True).render(hint_text, True, hint_col)
+        self.screen.blit(hint_surf, (cx - hint_surf.get_width() // 2, bar_y + 36))
 
     # =========================================================================
     # RENDERER 2: RADIO ZEN VISUALIZER (FULLSCREEN SPECTRUM ANALYZER)
@@ -2187,6 +2382,172 @@ class SNfetchDashboard:
         self.screen.blit(ver_surf, (SCREEN_WIDTH - 24 - ver_surf.get_width(), by + 16))
 
     # =========================================================================
+    # UNIFIED INPUT DISPATCHER (KEYBOARD & GAMEPAD)
+    # =========================================================================
+    def _handle_action_key(self, key: int) -> bool:
+        """Central key and controller button event handler. Returns False if application should exit."""
+        # Global Settings Toggle [Select] (Tab / S)
+        if key in (pygame.K_TAB, pygame.K_s):
+            if self.state == STATE_SETTINGS:
+                self.state = self.previous_state
+            else:
+                self.previous_state = self.state
+                self.state = STATE_SETTINGS
+            return True
+
+        # --- SPLASH SCREEN ---
+        if self.state == STATE_SPLASH:
+            if key in (pygame.K_LEFT, pygame.K_UP):
+                self.splash_cursor = (self.splash_cursor - 1) % 3
+            elif key in (pygame.K_RIGHT, pygame.K_DOWN):
+                self.splash_cursor = (self.splash_cursor + 1) % 3
+            elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_p, pygame.K_a):
+                if self.splash_cursor == 0:
+                    self.show_loading_screen("RADIO MODE", "Loading Station North Radio...")
+                    self.state = STATE_RADIO
+                    self._load_active_playlist(is_tv=False)
+                    self.trigger_play_track_async(self.current_idx)
+                elif self.splash_cursor == 1:
+                    self.show_loading_screen("STATION NORTH TV", "Starting Television Broadcast...")
+                    self._load_active_playlist(is_tv=True)
+                    self.launch_video_playback(self.current_idx, manual_trigger=True)
+                    self.state = STATE_SPLASH
+                elif self.splash_cursor == 2:
+                    self.show_loading_screen("THE CHRONICLES", "Loading Comic & Voice Lore...")
+                    self.state = STATE_CHRONICLES
+            elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
+                return False
+            return True
+
+        # --- RADIO MODE (ANDROID TV D-PAD FOCUS CURSOR) ---
+        elif self.state == STATE_RADIO:
+            if self.is_radio_zen_mode:
+                if key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
+                    self.is_radio_zen_mode = False
+                    self.radio_osd_visible = True
+                    return True
+
+                if not self.radio_osd_visible:
+                    self.radio_osd_visible = True
+                    self.radio_osd_last_interaction = time.time()
+                    return True
+
+                self.radio_osd_last_interaction = time.time()
+                if key == pygame.K_LEFT:
+                    self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
+                elif key == pygame.K_RIGHT:
+                    self.cockpit_focus_idx = (self.cockpit_focus_idx + 1) % 5
+                elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
+                    self._trigger_cockpit_action(self.cockpit_focus_idx)
+                elif key in (pygame.K_f, pygame.K_x):
+                    self.is_radio_zen_mode = False
+                elif key in (pygame.K_p, pygame.K_PAUSE):
+                    self._trigger_cockpit_action(2)
+                elif key == pygame.K_y:
+                    self._trigger_cockpit_action(4)
+                return True
+
+            if key == pygame.K_LEFT:
+                self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
+            elif key == pygame.K_RIGHT:
+                self.cockpit_focus_idx = (self.cockpit_focus_idx + 1) % 5
+            elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
+                self._trigger_cockpit_action(self.cockpit_focus_idx)
+            elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
+                self.stop_audio()
+                self.state = STATE_SPLASH
+            elif key in (pygame.K_f, pygame.K_x):
+                self.is_radio_zen_mode = True
+                self.radio_osd_visible = True
+                self.radio_osd_last_interaction = time.time()
+            elif key in (pygame.K_p, pygame.K_PAUSE):
+                self._trigger_cockpit_action(2)
+            elif key == pygame.K_y:
+                self._trigger_cockpit_action(4)
+            elif key == pygame.K_UP:
+                self.station_mgr.increment_counter()
+                self.current_idx = self.shuffle_mgr.advance_previous()
+                self.trigger_play_track_async(self.current_idx)
+            elif key == pygame.K_DOWN:
+                self.station_mgr.increment_counter()
+                self.current_idx = self.shuffle_mgr.advance_next()
+                self.trigger_play_track_async(self.current_idx)
+            return True
+
+        # --- TV MODE (ANDROID TV D-PAD FOCUS CURSOR) ---
+        elif self.state == STATE_TV:
+            if key == pygame.K_LEFT:
+                self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
+            elif key == pygame.K_RIGHT:
+                self.cockpit_focus_idx = (self.cockpit_focus_idx + 1) % 5
+            elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
+                self._trigger_cockpit_action(self.cockpit_focus_idx)
+            elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
+                self.state = STATE_SPLASH
+            elif key in (pygame.K_f, pygame.K_x):
+                self.launch_video_playback(self.current_idx, manual_trigger=True)
+            elif key in (pygame.K_p, pygame.K_PAUSE):
+                self._trigger_cockpit_action(2)
+            elif key == pygame.K_y:
+                self._trigger_cockpit_action(4)
+            return True
+
+        # --- CHRONICLES ---
+        elif self.state == STATE_CHRONICLES:
+            if key == pygame.K_LEFT:
+                if self.chronicles_idx > 0:
+                    self.stop_chronicles_audio()
+                    self.chronicles_idx -= 1
+            elif key == pygame.K_RIGHT:
+                if self.chronicles_idx < len(self.chronicles_data) - 1:
+                    self.stop_chronicles_audio()
+                    self.chronicles_idx += 1
+            elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_p, pygame.K_a):
+                self.toggle_chronicles_audio()
+            elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
+                self.stop_chronicles_audio()
+                self.state = STATE_SPLASH
+            return True
+
+        # --- SETTINGS ---
+        elif self.state == STATE_SETTINGS:
+            if self.settings_column == 0:
+                if key == pygame.K_UP:
+                    self.settings_cursor = (self.settings_cursor - 1) % 8
+                elif key == pygame.K_DOWN:
+                    self.settings_cursor = (self.settings_cursor + 1) % 8
+                elif key == pygame.K_LEFT:
+                    if self.settings_cursor in (0, 1, 2, 3, 4, 5):
+                        self._adjust_setting(delta=-1)
+                elif key == pygame.K_RIGHT:
+                    if self.settings_cursor in (6, 7):
+                        self.settings_column = 1
+                    else:
+                        self._adjust_setting(delta=1)
+                elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
+                    if self.settings_cursor == 6:
+                        self._execute_setting_action()
+                    elif self.settings_cursor == 7:
+                        self.settings_column = 1
+                    else:
+                        self.settings_column = 1
+                elif key in (pygame.K_f, pygame.K_x, pygame.K_y, pygame.K_PAGEUP, pygame.K_PAGEDOWN):
+                    self.settings_column = 1
+                elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
+                    self.state = self.previous_state
+            else:
+                # Column 1: Handbook scrolling
+                if key == pygame.K_UP:
+                    self.settings_guide_scroll_y = max(0, self.settings_guide_scroll_y - 36)
+                elif key == pygame.K_DOWN:
+                    self.settings_guide_scroll_y = min(self.settings_guide_max_scroll, self.settings_guide_scroll_y + 36)
+                elif key in (pygame.K_LEFT, pygame.K_b, pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_f, pygame.K_x, pygame.K_y, pygame.K_a, pygame.K_PAGEUP, pygame.K_PAGEDOWN):
+                    self.settings_column = 0
+            return True
+
+        return True
+
+    # =========================================================================
     # EVENT LOOP & EXECUTION
     # =========================================================================
     def run(self):
@@ -2220,162 +2581,75 @@ class SNfetchDashboard:
                 pygame.quit()
                 sys.exit(0)
 
+            if self.joysticks:
+                try:
+                    for joy in self.joysticks:
+                        nb = joy.get_numbuttons()
+                        if nb > 7:
+                            b_sel = joy.get_button(6) or (nb > 8 and joy.get_button(8))
+                            b_sta = joy.get_button(7) or (nb > 9 and joy.get_button(9))
+                            if b_sel and b_sta:
+                                self.stop_audio()
+                                self.stop_chronicles_audio()
+                                pygame.quit()
+                                sys.exit(0)
+                except Exception:
+                    pass
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
                 elif event.type == pygame.KEYDOWN:
-                    # Global Settings Toggle [Select] (Tab / S)
-                    if event.key in (pygame.K_TAB, pygame.K_s):
-                        if self.state == STATE_SETTINGS:
-                            self.state = self.previous_state
-                        else:
-                            self.previous_state = self.state
-                            self.state = STATE_SETTINGS
-                        continue
+                    if not self._handle_action_key(event.key):
+                        running = False
 
-                    # --- SPLASH SCREEN ---
-                    if self.state == STATE_SPLASH:
-                        if event.key in (pygame.K_LEFT, pygame.K_UP):
-                            self.splash_cursor = (self.splash_cursor - 1) % 3
-                        elif event.key in (pygame.K_RIGHT, pygame.K_DOWN):
-                            self.splash_cursor = (self.splash_cursor + 1) % 3
-                        elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_p, pygame.K_a):
-                            if self.splash_cursor == 0:
-                                self.show_loading_screen("RADIO MODE", "Loading Station North Radio...")
-                                self.state = STATE_RADIO
-                                self._load_active_playlist(is_tv=False)
-                                self.trigger_play_track_async(self.current_idx)
-                            elif self.splash_cursor == 1:
-                                self.show_loading_screen("STATION NORTH TV", "Starting Television Broadcast...")
-                                self._load_active_playlist(is_tv=True)
-                                self.launch_video_playback(self.current_idx, manual_trigger=True)
-                                self.state = STATE_SPLASH
-                            elif self.splash_cursor == 2:
-                                self.show_loading_screen("THE CHRONICLES", "Loading Comic & Voice Lore...")
-                                self.state = STATE_CHRONICLES
-                        elif event.key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
+                elif event.type == pygame.JOYBUTTONDOWN:
+                    btn_map = {
+                        0: pygame.K_RETURN,   # A
+                        1: pygame.K_ESCAPE,   # B
+                        2: pygame.K_f,        # X
+                        3: pygame.K_y,        # Y
+                        4: pygame.K_LEFT,     # L1
+                        5: pygame.K_RIGHT,    # R1
+                        6: pygame.K_TAB,      # Select
+                        7: pygame.K_p,        # Start
+                        8: pygame.K_TAB,      # Alt Select
+                        9: pygame.K_p,        # Alt Start
+                    }
+                    mapped_k = btn_map.get(event.button)
+                    if mapped_k is not None:
+                        if not self._handle_action_key(mapped_k):
                             running = False
 
-                    # --- RADIO MODE (ANDROID TV D-PAD FOCUS CURSOR) ---
-                    elif self.state == STATE_RADIO:
-                        if self.is_radio_zen_mode:
-                            # [B] / ESC / Backspace: Vollbild sofort beenden & zurueck zum Dashboard
-                            if event.key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
-                                self.is_radio_zen_mode = False
-                                self.radio_osd_visible = True
-                                continue
+                elif event.type == pygame.JOYHATMOTION:
+                    hx, hy = event.value
+                    if hx == -1:
+                        self._handle_action_key(pygame.K_LEFT)
+                    elif hx == 1:
+                        self._handle_action_key(pygame.K_RIGHT)
+                    elif hy == 1:
+                        self._handle_action_key(pygame.K_UP)
+                    elif hy == -1:
+                        self._handle_action_key(pygame.K_DOWN)
 
-                            # Wenn OSD ausgeblendet war, weckt JEDE Taste (ausser B) das Menue auf
-                            if not self.radio_osd_visible:
-                                self.radio_osd_visible = True
-                                self.radio_osd_last_interaction = time.time()
-                                continue
-
-                            # Wenn OSD sichtbar ist, Inaktivitaets-Timer aktualisieren
-                            self.radio_osd_last_interaction = time.time()
-
-                            if event.key == pygame.K_LEFT:
-                                self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
-                            elif event.key == pygame.K_RIGHT:
-                                self.cockpit_focus_idx = (self.cockpit_focus_idx + 1) % 5
-                            elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
-                                self._trigger_cockpit_action(self.cockpit_focus_idx)
-                            elif event.key in (pygame.K_f, pygame.K_x):
-                                self.is_radio_zen_mode = False
-                            elif event.key in (pygame.K_p, pygame.K_PAUSE):
-                                self._trigger_cockpit_action(2)
-                            elif event.key == pygame.K_y:
-                                self._trigger_cockpit_action(4)
-                            continue
-
-                        if event.key == pygame.K_LEFT:
-                            self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
-                        elif event.key == pygame.K_RIGHT:
-                            self.cockpit_focus_idx = (self.cockpit_focus_idx + 1) % 5
-                        elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
-                            self._trigger_cockpit_action(self.cockpit_focus_idx)
-                        elif event.key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
-                            self.stop_audio()
-                            self.state = STATE_SPLASH
-                        # Secondary physical hotkeys
-                        elif event.key in (pygame.K_f, pygame.K_x):
-                            self.is_radio_zen_mode = True
-                            self.radio_osd_visible = True
-                            self.radio_osd_last_interaction = time.time()
-                        elif event.key in (pygame.K_p, pygame.K_PAUSE):
-                            self._trigger_cockpit_action(2)
-                        elif event.key == pygame.K_y:
-                            self._trigger_cockpit_action(4)
-
-                    # --- TV MODE (ANDROID TV D-PAD FOCUS CURSOR) ---
-                    elif self.state == STATE_TV:
-                        if event.key == pygame.K_LEFT:
-                            self.cockpit_focus_idx = (self.cockpit_focus_idx - 1) % 5
-                        elif event.key == pygame.K_RIGHT:
-                            self.cockpit_focus_idx = (self.cockpit_focus_idx + 1) % 5
-                        elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
-                            self._trigger_cockpit_action(self.cockpit_focus_idx)
-                        elif event.key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
-                            self.state = STATE_SPLASH
-                        # Secondary physical hotkeys: [X] Launches Fullscreen Video
-                        elif event.key in (pygame.K_f, pygame.K_x):
-                            self.launch_video_playback(self.current_idx, manual_trigger=True)
-                        elif event.key in (pygame.K_p, pygame.K_PAUSE):
-                            self._trigger_cockpit_action(2)
-                        elif event.key == pygame.K_y:
-                            self._trigger_cockpit_action(4)
-
-                    # --- CHRONICLES ---
-                    elif self.state == STATE_CHRONICLES:
-                        if event.key == pygame.K_LEFT:
-                            if self.chronicles_idx > 0:
-                                self.stop_chronicles_audio()
-                                self.chronicles_idx -= 1
-                        elif event.key == pygame.K_RIGHT:
-                            if self.chronicles_idx < len(self.chronicles_data) - 1:
-                                self.stop_chronicles_audio()
-                                self.chronicles_idx += 1
-                        elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_p, pygame.K_a):
-                            self.toggle_chronicles_audio()
-                        elif event.key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
-                            self.stop_chronicles_audio()
-                            self.state = STATE_SPLASH
-
-                    # --- SETTINGS ---
-                    elif self.state == STATE_SETTINGS:
-                        if self.settings_column == 0:
-                            if event.key == pygame.K_UP:
-                                self.settings_cursor = (self.settings_cursor - 1) % 8
-                            elif event.key == pygame.K_DOWN:
-                                self.settings_cursor = (self.settings_cursor + 1) % 8
-                            elif event.key == pygame.K_LEFT:
-                                if self.settings_cursor in (0, 1, 2, 3, 4, 5):
-                                    self._adjust_setting(delta=-1)
-                            elif event.key == pygame.K_RIGHT:
-                                if self.settings_cursor in (6, 7):
-                                    self.settings_column = 1
-                                else:
-                                    self._adjust_setting(delta=1)
-                            elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_a):
-                                if self.settings_cursor == 6:
-                                    self._execute_setting_action()
-                                elif self.settings_cursor == 7:
-                                    self.settings_column = 1
-                                else:
-                                    self.settings_column = 1
-                            elif event.key in (pygame.K_f, pygame.K_x, pygame.K_y, pygame.K_PAGEUP, pygame.K_PAGEDOWN):
-                                self.settings_column = 1
-                            elif event.key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
-                                self.state = self.previous_state
-                        else:
-                            # Column 1: Handbook scrolling
-                            if event.key == pygame.K_UP:
-                                self.settings_guide_scroll_y = max(0, self.settings_guide_scroll_y - 36)
-                            elif event.key == pygame.K_DOWN:
-                                self.settings_guide_scroll_y = min(self.settings_guide_max_scroll, self.settings_guide_scroll_y + 36)
-                            elif event.key in (pygame.K_LEFT, pygame.K_b, pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_f, pygame.K_x, pygame.K_y, pygame.K_a, pygame.K_PAGEUP, pygame.K_PAGEDOWN):
-                                self.settings_column = 0
+                elif event.type == pygame.JOYAXISMOTION:
+                    now = time.time()
+                    if now - self._last_axis_time > 0.22:
+                        if event.axis == 0:
+                            if event.value < -0.55:
+                                self._last_axis_time = now
+                                self._handle_action_key(pygame.K_LEFT)
+                            elif event.value > 0.55:
+                                self._last_axis_time = now
+                                self._handle_action_key(pygame.K_RIGHT)
+                        elif event.axis == 1:
+                            if event.value < -0.55:
+                                self._last_axis_time = now
+                                self._handle_action_key(pygame.K_UP)
+                            elif event.value > 0.55:
+                                self._last_axis_time = now
+                                self._handle_action_key(pygame.K_DOWN)
 
             if self.state == STATE_SPLASH:
                 self.draw_splash_screen()
@@ -2425,8 +2699,9 @@ class SNfetchDashboard:
             self.settings_feedback_msg = f"Single-Track Repeat Loop: {'ON' if rep else 'OFF'}"
             self.settings_feedback_time = time.time()
         elif self.settings_cursor == 6:
+            self._start_background_asset_sync()
             self.station_mgr._scan_station_assets()
             self._discover_playlists()
-            j, t, c, tot, _ = self.get_asset_stats()
-            self.settings_feedback_msg = f"Asset Storage Synchronized ({tot} items found)!"
+            j, t, c, tot, pct = self.get_asset_stats()
+            self.settings_feedback_msg = f"Asset Sync Triggered ({tot} found, {int(pct)}% ready)!"
             self.settings_feedback_time = time.time()
