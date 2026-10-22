@@ -784,6 +784,7 @@ class SNfetchDashboard:
             if not base_dir.exists() and Path("/roms/ports/snfetchplayer/assets").exists():
                 base_dir = Path("/roms/ports/snfetchplayer/assets")
             base_dir.mkdir(parents=True, exist_ok=True)
+            app_dir = base_dir.resolve().parent
 
             manifest_path = base_dir / "catalog_manifest.json"
             manifest = None
@@ -859,6 +860,76 @@ class SNfetchDashboard:
             self.sync_total_items = total_needed
             self.sync_downloaded_items = 0
 
+            # --- STRATEGY 1: HIGH-SPEED BUNDLE ZIP DOWNLOAD (FOR FRESH INSTALLS / MASSIVE UPDATES) ---
+            # If > 25 files are missing, download the full asset archive in one high-throughput stream
+            if total_needed > 25:
+                bundle_urls = [
+                    "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v5.0.0/snfetchplayer-assets.zip",
+                    "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v4.0.0/snfetchplayer-assets.zip"
+                ]
+                bundle_downloaded = False
+                tmp_zip = app_dir / "snfetchplayer_assets_temp.zip"
+
+                for b_url in bundle_urls:
+                    try:
+                        self.sync_status_text = "Connecting to High-Speed Asset Server..."
+                        req = urllib.request.Request(b_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/5.0"})
+                        with urllib.request.urlopen(req, timeout=15) as resp:
+                            content_len_hdr = resp.headers.get("Content-Length")
+                            total_bytes = int(content_len_hdr) if content_len_hdr else 298013869
+                            downloaded_bytes = 0
+                            last_update_time = time.time()
+
+                            with open(tmp_zip, "wb") as out_f:
+                                while True:
+                                    chunk = resp.read(262144)  # 256KB chunks
+                                    if not chunk:
+                                        break
+                                    out_f.write(chunk)
+                                    downloaded_bytes += len(chunk)
+                                    now = time.time()
+                                    if now - last_update_time > 0.25 or downloaded_bytes >= total_bytes:
+                                        last_update_time = now
+                                        dl_mb = downloaded_bytes / (1024 * 1024)
+                                        tot_mb = total_bytes / (1024 * 1024)
+                                        pct = min(99.0, (downloaded_bytes / total_bytes) * 100.0)
+                                        self.sync_pct = pct
+                                        self.sync_status_text = f"Downloading Media Pack: {dl_mb:.1f} MB / {tot_mb:.1f} MB ({int(pct)}%)"
+
+                            if tmp_zip.exists() and tmp_zip.stat().st_size > 50 * 1024 * 1024:
+                                self.sync_status_text = "Extracting Media Pack (TV Idents, Jingles & Comics)..."
+                                self.sync_pct = 99.0
+                                import zipfile
+                                with zipfile.ZipFile(tmp_zip, "r") as z:
+                                    z.extractall(app_dir)
+                                try:
+                                    tmp_zip.unlink()
+                                except Exception:
+                                    pass
+                                bundle_downloaded = True
+                                break
+                    except Exception as b_err:
+                        if tmp_zip.exists():
+                            try:
+                                tmp_zip.unlink()
+                            except Exception:
+                                pass
+
+                if bundle_downloaded:
+                    self.station_mgr._scan_station_assets()
+                    self._load_chronicles()
+                    # Re-check remaining tasks
+                    remaining = [t for t in tasks if not t[3].exists() or t[3].stat().st_size == 0]
+                    if not remaining:
+                        self.sync_active = False
+                        self.sync_pct = 100.0
+                        self.sync_status_text = "All Station Assets Synchronized • 100% Ready"
+                        return
+                    tasks = remaining
+                    total_needed = len(tasks)
+                    self.sync_total_items = total_needed
+
+            # --- STRATEGY 2: DELTA SYNC (INDIVIDUAL FILE DOWNLOADS FOR SMALL UPDATES / FALLBACK) ---
             for idx, (itype, fname, raw_url, target) in enumerate(tasks, 1):
                 safe_url = urllib.parse.quote(raw_url, safe=":/?&=")
                 self.sync_current_file = fname
