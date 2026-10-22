@@ -713,7 +713,7 @@ class SNfetchDashboard:
             if d.exists():
                 for p in d.glob("*.json"):
                     name = p.stem.lower()
-                    if name in ["sprueche", "settings", "chronicles_data", "extractor_rules", "shuffle_state", "catalog_manifest"]:
+                    if name in ["sprueche", "settings", "chronicles_data", "extractor_rules", "shuffle_state", "catalog_manifest", "port"]:
                         continue
                     if name not in found_paths:
                         found_paths[name] = p
@@ -734,6 +734,90 @@ class SNfetchDashboard:
                 title = labels.get(key, f"Playlist: {p.stem.upper()}")
                 self.available_playlists.append({"title": title, "path": str(p.resolve())})
 
+        # --- DISCOVER LOCAL MEDIA FILES & FOLDERS ---
+        MEDIA_AUDIO_EXTS = {".mp3", ".flac", ".ogg", ".wav", ".m4a", ".opus", ".aac"}
+        MEDIA_VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v"}
+        ALL_MEDIA_EXTS = MEDIA_AUDIO_EXTS | MEDIA_VIDEO_EXTS
+
+        local_bases = [
+            Path("playlists"),
+            Path("/roms/ports/snfetchplayer/playlists"),
+            Path("music"),
+            Path("/roms/ports/snfetchplayer/music")
+        ]
+        seen_dirs = set()
+
+        for b_dir in local_bases:
+            if not b_dir.exists():
+                continue
+            try:
+                resolved_b = b_dir.resolve()
+            except Exception:
+                resolved_b = b_dir
+            if resolved_b in seen_dirs:
+                continue
+            seen_dirs.add(resolved_b)
+
+            # 1. Media files directly in base directory
+            root_tracks = []
+            try:
+                for item in sorted(b_dir.iterdir()):
+                    if item.is_file() and item.suffix.lower() in ALL_MEDIA_EXTS:
+                        stem = item.stem
+                        artist = "Local Media"
+                        title = stem
+                        if " - " in stem:
+                            parts = stem.split(" - ", 1)
+                            artist = parts[0].strip()
+                            title = parts[1].strip()
+                        root_tracks.append({
+                            "title": title,
+                            "artist": artist,
+                            "path": str(item.resolve()),
+                            "local": True,
+                            "is_video": item.suffix.lower() in MEDIA_VIDEO_EXTS
+                        })
+            except Exception:
+                pass
+
+            if root_tracks:
+                self.available_playlists.append({
+                    "title": f"Local • {b_dir.name.capitalize()}",
+                    "path": str(b_dir.resolve()),
+                    "items": root_tracks
+                })
+
+            # 2. Subdirectories inside base directory
+            try:
+                for sub in sorted(b_dir.iterdir()):
+                    if sub.is_dir() and not sub.name.startswith("."):
+                        sub_tracks = []
+                        for item in sorted(sub.iterdir()):
+                            if item.is_file() and item.suffix.lower() in ALL_MEDIA_EXTS:
+                                stem = item.stem
+                                artist = "Local Media"
+                                title = stem
+                                if " - " in stem:
+                                    parts = stem.split(" - ", 1)
+                                    artist = parts[0].strip()
+                                    title = parts[1].strip()
+                                sub_tracks.append({
+                                    "title": title,
+                                    "artist": artist,
+                                    "path": str(item.resolve()),
+                                    "local": True,
+                                    "is_video": item.suffix.lower() in MEDIA_VIDEO_EXTS
+                                })
+                        if sub_tracks:
+                            label = sub.name.replace("_", " ").replace("-", " ").title()
+                            self.available_playlists.append({
+                                "title": f"Local • {label}",
+                                "path": str(sub.resolve()),
+                                "items": sub_tracks
+                            })
+            except Exception:
+                pass
+
         if not self.available_playlists:
             self.available_playlists.append({"title": "Station North • Standard", "path": "playlist.json"})
 
@@ -744,11 +828,14 @@ class SNfetchDashboard:
         if idx >= len(self.available_playlists):
             idx = 0
         item = self.available_playlists[idx]
-        try:
-            with open(item["path"], "r", encoding="utf-8") as f:
-                self.playlist = json.load(f)
-        except Exception:
-            self.playlist = []
+        if "items" in item:
+            self.playlist = list(item["items"])
+        else:
+            try:
+                with open(item["path"], "r", encoding="utf-8") as f:
+                    self.playlist = json.load(f)
+            except Exception:
+                self.playlist = []
 
         self.shuffle_mgr.init_playlist(len(self.playlist), playlist_id=item["title"])
         self.current_idx = self.shuffle_mgr.get_current_idx()
@@ -1207,8 +1294,32 @@ class SNfetchDashboard:
                 return
 
             track = self.playlist[idx]
-            yt_id = track.get("youtubeId")
-            stream_url, duration = get_stream(yt_id, prefer_audio_only=True)
+            local_path = track.get("path") or track.get("file")
+            is_local = False
+            stream_url = None
+            duration = 210.0
+
+            if local_path and Path(local_path).exists():
+                is_local = True
+                stream_url = str(Path(local_path).resolve())
+            elif track.get("youtubeId") and (Path(str(track.get("youtubeId"))).exists() or str(track.get("youtubeId")).startswith("/") or str(track.get("youtubeId")).startswith(".")):
+                if Path(str(track.get("youtubeId"))).exists():
+                    is_local = True
+                    stream_url = str(Path(str(track.get("youtubeId"))).resolve())
+
+            if is_local:
+                try:
+                    prb = subprocess.run([
+                        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1:nokey=1", stream_url
+                    ], capture_output=True, text=True, timeout=1.5)
+                    if prb.stdout.strip():
+                        duration = float(prb.stdout.strip())
+                except Exception:
+                    pass
+            else:
+                yt_id = track.get("youtubeId")
+                stream_url, duration = get_stream(yt_id, prefer_audio_only=True)
 
             if stream_url and self.state == STATE_RADIO and self._resolve_id == req_id:
                 self.current_idx = idx
@@ -1361,8 +1472,21 @@ class SNfetchDashboard:
                         pygame.mouse.set_visible(False)
                     self.show_loading_screen("STATION NORTH TV", f"Loading Video: {track_artist} - {track_title}")
 
-            yt_id = track.get("youtubeId")
-            stream_url, _ = get_stream(yt_id, prefer_audio_only=False)
+            local_path = track.get("path") or track.get("file")
+            is_local = False
+            stream_url = None
+            if local_path and Path(local_path).exists():
+                is_local = True
+                stream_url = str(Path(local_path).resolve())
+            elif track.get("youtubeId") and (Path(str(track.get("youtubeId"))).exists() or str(track.get("youtubeId")).startswith("/") or str(track.get("youtubeId")).startswith(".")):
+                if Path(str(track.get("youtubeId"))).exists():
+                    is_local = True
+                    stream_url = str(Path(str(track.get("youtubeId"))).resolve())
+
+            if not is_local:
+                yt_id = track.get("youtubeId")
+                stream_url, _ = get_stream(yt_id, prefer_audio_only=False)
+
             if not stream_url:
                 curr_idx = self.shuffle_mgr.advance_next()
                 show_osd_this_track = False
@@ -1375,24 +1499,43 @@ class SNfetchDashboard:
             if not Path(logo_path).exists():
                 logo_path = str(Path("sn_logo.png").resolve())
 
-            # 4:3 Display-Fill + 65% Logo Transparenz + Elegante Bauchbinde (Crash-sicheres Scale & Crop)
-            vf_filter = (
-                f"scale=1024:768:force_original_aspect_ratio=increase,crop=1024:768 [main]; "
-                f"movie={logo_path},scale=175:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
-                f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26, "
-                f"ass='{osd_file}'"
-            )
-
-            cmd = [
-                "ffplay",
-                "-fs",
-                "-autoexit",
-                "-sync", "audio",
-                "-window_title", f"STATION NORTH • {track_artist} - {track_title}",
-                "-loglevel", "error",
-                "-vf", vf_filter,
-                stream_url
-            ]
+            is_audio_only = is_local and Path(stream_url).suffix.lower() in {".mp3", ".flac", ".ogg", ".wav", ".m4a", ".opus", ".aac"}
+            if not is_audio_only:
+                # 4:3 Display-Fill + 65% Logo Transparenz + Elegante Bauchbinde (Crash-sicheres Scale & Crop)
+                vf_filter = (
+                    f"scale=1024:768:force_original_aspect_ratio=increase,crop=1024:768 [main]; "
+                    f"movie={logo_path},scale=175:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
+                    f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26, "
+                    f"ass='{osd_file}'"
+                )
+                cmd = [
+                    "ffplay",
+                    "-fs",
+                    "-autoexit",
+                    "-sync", "audio",
+                    "-window_title", f"STATION NORTH • {track_artist} - {track_title}",
+                    "-loglevel", "error",
+                    "-vf", vf_filter,
+                    stream_url
+                ]
+            else:
+                # Local audio file played in TV mode: show Station North visualizer waves + ASS banner
+                vf_filter = (
+                    f"movie={logo_path},scale=240:-1,format=rgba,colorchannelmixer=aa=0.75 [logo]; "
+                    f"[in][logo] overlay=(W-w)/2:(H-h)/2, "
+                    f"ass='{osd_file}'"
+                )
+                cmd = [
+                    "ffplay",
+                    "-fs",
+                    "-autoexit",
+                    "-sync", "audio",
+                    "-window_title", f"STATION NORTH • {track_artist} - {track_title}",
+                    "-loglevel", "error",
+                    "-showmode", "waves",
+                    "-vf", vf_filter,
+                    stream_url
+                ]
 
             pygame.display.quit()
             play_start_time = time.time()

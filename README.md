@@ -12,6 +12,7 @@
 <p align="center">
   <a href="#-quick-start--installation"><img src="https://img.shields.io/badge/PortMaster-Ready-88C0D0?style=for-the-badge&logo=linux&logoColor=white" alt="PortMaster Ready" /></a>
   <a href="#-the-visual-experience"><img src="https://img.shields.io/badge/Release-v6.2%20Cyberdeck-81A1C1?style=for-the-badge" alt="v6.2" /></a>
+  <a href="https://github.com/StationNorthMedia/SNfetchPLAYER"><img src="https://img.shields.io/badge/Android%20Companion-SNfetchPLAYER-A3BE8C?style=for-the-badge&logo=android&logoColor=white" alt="Android Companion" /></a>
   <a href="#-words-from-the-queen-ready-to-share"><img src="https://img.shields.io/badge/Vibe-The%20Queen's%20Frequency-B48EAD?style=for-the-badge" alt="The Queen" /></a>
 </p>
 
@@ -119,15 +120,26 @@ We provide two installation flavors to fit your handheld setup:
 
 ---
 
-## 📁 Custom Playlists & Curator Integration
-
-Want to play your own music collection alongside The Queen's curated sets?
-Drop your MP3, FLAC, M4A, or JSON playlists directly into:
+## 📁 Custom Playlists & Local Media
+ 
+Want to play your own offline music and video collection alongside The Queen's curated sets?
+Drop your MP3, FLAC, OGG, WAV, M4A, or MP4 files directly into:
 ```text
 /roms/ports/snfetchplayer/playlists/
 ```
-Navigate to **Settings -> Re-Scan Local Asset Storage** and your custom stations will be indexed instantly. You can also build playlists in the **Station North Android App**, export them as JSON, and sync them over!
-
+Navigate to **Settings -> Re-Scan Local Asset Storage** and your custom stations will be indexed automatically.
+ 
+---
+ 
+## 📱 Mobile Companion: Station North Android App
+ 
+Stream The Queen's Frequency on the go or build custom playlists comfortably from your smartphone!  
+Check out the official **Android Companion App**:  
+👉 **[StationNorthMedia/SNfetchPLAYER on GitHub](https://github.com/StationNorthMedia/SNfetchPLAYER)**
+ 
+- **Curate on Mobile**: Build and organize your favorite music queues on Android, export them as JSON playlists, and drop them right into your handheld's `/playlists/` directory.
+- **Unified Ecosystem**: Features the same InnerTube mobile streaming architecture, custom track catalogs, and late-night aesthetic universe.
+ 
 ---
 
 ## 📢 Words from The Queen (Ready to Share!)
