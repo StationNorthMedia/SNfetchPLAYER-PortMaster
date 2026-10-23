@@ -1,4 +1,4 @@
-# 👑 Station North SNfetchPLAYER • PortMaster Edition (v6.2)
+# 👑 Station North SNfetchPLAYER • dArkOS & ArkOS Edition
 
 <p align="center">
   <img src="sn_logo.png" alt="Station North Logo" width="340" />
@@ -6,14 +6,14 @@
 
 <p align="center">
   <b>The Sovereign Cyberdeck & Retro Media Suite for Handheld Gaming Consoles</b><br>
-  <i>Tailored for Rockchip RK3326, RK3566, Allwinner H700 & Amlogic Handhelds running ArkOS, dArkOS, AmberELEC, ROCKNIX & PortMaster</i>
+  <i>Tailored specifically for 4:3 Handhelds (R36S, R35S, RK3326) running dArkOS & ArkOS</i>
 </p>
 
 <p align="center">
-  <a href="#-quick-start--installation"><img src="https://img.shields.io/badge/PortMaster-Ready-88C0D0?style=for-the-badge&logo=linux&logoColor=white" alt="PortMaster Ready" /></a>
-  <a href="#-the-visual-experience"><img src="https://img.shields.io/badge/Release-v6.2%20Cyberdeck-81A1C1?style=for-the-badge" alt="v6.2" /></a>
-  <a href="https://github.com/StationNorthMedia/SNfetchPLAYER"><img src="https://img.shields.io/badge/Android%20Companion-SNfetchPLAYER-A3BE8C?style=for-the-badge&logo=android&logoColor=white" alt="Android Companion" /></a>
-  <a href="#-words-from-the-queen-ready-to-share"><img src="https://img.shields.io/badge/Vibe-The%20Queen's%20Frequency-B48EAD?style=for-the-badge" alt="The Queen" /></a>
+  <img src="https://img.shields.io/badge/Platform-dArkOS%20%7C%20ArkOS-88C0D0?style=for-the-badge&logo=linux&logoColor=white" alt="dArkOS & ArkOS" />
+  <img src="https://img.shields.io/badge/Display-4%3A3%20Native%20KMSDRM-81A1C1?style=for-the-badge" alt="4:3 KMSDRM" />
+  <img src="https://img.shields.io/badge/Audio-Direct%20ALSA%20Hardware-A3BE8C?style=for-the-badge" alt="Direct ALSA" />
+  <img src="https://img.shields.io/badge/Vibe-The%20Queen's%20Frequency-B48EAD?style=for-the-badge" alt="The Queen" />
 </p>
 
 ---
@@ -26,21 +26,18 @@
 
 ---
 
-## 💡 Design Philosophy: Built for Budget 4:3 Handhelds & Open for All
+## 💡 Design Philosophy: Built for 4:3 Retro Handhelds
 
-Station North was born out of love for classic **$30–$50 retro handhelds** (Anbernic RG35XX, Miyoo Mini, R36S, Powkiddy, RG40XX) equipped with 4:3 displays.  
-The core vision: **turn these humble retro gaming devices into dedicated, late-night Cyberdecks** — streaming lofi frequencies, voiced lore comics, and authentic 4:3 CRT video broadcasts directly on your desk or nightstand.
+Station North was born out of love for the **R36S, R35S and classic RK3326 retro handhelds** equipped with authentic 4:3 displays (640×480).  
+The core vision: **turn your handheld into a dedicated, late-night Cyberdeck** — streaming lofi frequencies, voiced lore comics, and authentic 4:3 CRT video broadcasts directly on your desk or nightstand.
 
 - **Authentic 4:3 CRT Aesthetic**: Video broadcasts, lower-third banners, and UI elements are specifically cropped and framed for 4:3, delivering a nostalgic vintage television broadcast experience.
-- **Hardware-Scaled on Widescreens**: On modern 16:9 handhelds (like the Retroid Pocket 5 or Odin), hardware scaling (`pygame.SCALED`) fills the full vertical height with clean pillarboxing, preserving original 4:3 proportions without distortion.
-- **Multi-Platform Mission**: We are actively expanding SNfetchPLAYER across platforms — from Linux handhelds via PortMaster to Android devices with our native APK.
-- **Fork-Friendly & Open Source**: Love the platform? **Fork it!** You are warmly encouraged to clone the repository, customize your own radio stations, drop in your own local playlists, and adapt the player to your liking.
+- **Native Hardware Performance**: Built for Debian Linux under dArkOS & ArkOS. Runs at silky 60 FPS directly via Linux KMSDRM DirectFB (`/dev/dri/card0`) and native ALSA audio with zero desktop overhead or emulated runtime lag.
+- **Dedicated Dual Mode**: Seamlessly switch between the live 40-band audio spectrum analyzer (Radio Mode) and 4:3 full-screen broadcast videos (TV Mode).
 
 ---
 
 ## 🌟 The Visual Gallery
-
-SNfetchPLAYER transforms your gaming handheld into an authentic, standalone late-night media terminal. Built in Python 3 and SDL2/Pygame with exclusive hardware KMSDRM acceleration, it runs at silky 60 FPS with zero desktop overhead.
 
 | | |
 |:---:|:---:|
@@ -53,7 +50,7 @@ SNfetchPLAYER transforms your gaming handheld into an authentic, standalone late
 
 ## 🎮 Controller Layout & Keybindings
 
-Universal PortMaster controller bindings with hardware debounce and anti-slip filtering:
+Configured for native dArkOS / ArkOS gamepads with hardware debounce:
 
 | Button | Main Menu (Command Deck) | Radio Cockpit | Zen Mode (Fullscreen) | TV Broadcast | The Chronicles | Settings & Handbook |
 |---|---|---|---|---|---|---|
@@ -65,77 +62,41 @@ Universal PortMaster controller bindings with hardware debounce and anti-slip fi
 | **`[Y]`** | – | Repeat Track Loop | Repeat Track Loop | Repeat Single Track | – | Toggle Repeat Loop |
 | **`[SELECT]`** | Quick Settings | Quick Settings | Wake OSD | – | Quick Settings | Close Settings |
 | **`[START]`** | Launch Focused | Play / Pause | Play / Pause | Freeze / Play | – | Apply Action |
-| **`[SEL] + [START]`** | **PortMaster Emergency Exit** | **Emergency Exit** | **Emergency Exit** | **Emergency Exit** | **Emergency Exit** | **Emergency Exit** |
+| **`[SEL] + [START]`** | **Universal Emergency Exit** | **Emergency Exit** | **Emergency Exit** | **Emergency Exit** | **Emergency Exit** | **Emergency Exit** |
 
 > [!NOTE]  
 > In the Main Menu, pressing `[B]` is safely locked against accidental app termination. Clean exit to EmulationStation is handled exclusively by selecting the red **#4 Exit Tile** and pressing `[A]`.
 
 ---
 
-## 🕹️ Supported Hardware & Handheld Matrix (dArkOS / ArkOS)
+## 📦 Installation on dArkOS / ArkOS
 
-Station North SNfetchPLAYER is optimized for Rockchip RK3326 and related SoCs running **dArkOS** or **ArkOS**. It natively supports all **91 hardware console profiles and display panel revisions** found in `/boot/consoles`:
-
-### 🏆 Console Ecosystems
-
-| Category | Supported Handheld Models & Variants |
-|---|---|
-| **R-Series & Clones** | `R33S`, `R36H`, `R36H Pro Max`, `R36Pro`, `R36S+`, `R36T`, `R36T Max`, `R36 Ultra`, `R36 Ultra X`, `R36XX`, `R36Max (Type 1–3, Max2)`, `R40S`, `R40XX`, `R40XX Pro Max`, `R45H`, `R46H`, `R50H`, `R50S` |
-| **Anbernic** | `RG351P`, `RG351MP`, `RG351V (Panel 1 & 2)`, `RG36`, `RG36 Pro` |
-| **Powkiddy** | `RGB10`, `RGB10 Max 1`, `RGB10 Max 2`, `RGB10X`, `RGB20S`, `RGBV10` |
-| **MagicX & RF / XF Series** | `XU10`, `XF28`, `XF35H`, `XF40H`, `XF40V`, `XF45V`, `RF35H`, `RF40H`, `RF45H`, `RF45V`, `RF55H`, `RX6H`, `XGB36` |
-| **Mini & Pocket Devices** | `A10 Mini (v1 & v4)`, `D007`, `DC35V`, `DC40V`, `DC45V`, `DR28S`, `G350`, `GO2`, `H7`, `HG36`, `K36`, `K36S`, `Mini40`, `MyMini`, `O30S`, `RP1`, `RS16`, `T16Max` |
-| **Panel Revisions & Clones** | `Clone Type 1 (Panels 1–6, Amp/Invert)`, `Clone Type 2 (Panels 1–2, Amp)`, `Origin (Panels 0–4)`, `Sauce (Panels 1–5)`, `U8 (Panels 1–2)`, `V21 (Panel 4 Rumble Test)` |
-
-<details>
-<summary><b>🔍 View Complete Technical List of All 91 Console & Panel Targets (Click to expand)</b></summary>
-
-```text
-a10mini, a10miniv4, clone type1 panel1, clone type1 panel1 amp, clone type1 panel1 invert,
-clone type1 panel2, clone type1 panel3, clone type1 panel4, clone type1 panel5,
-clone type1 panel5 invert, clone type1 panel6, clone type2 panel1, clone type2 panel1 amp,
-clone type2 panel2, d007, dc35v, dc40v, dc45v, dr28s, g350, go2, h7, hg36, k36, k36s, mini40,
-mymini, o30s, origin panel0, origin panel1, origin panel2, origin panel3, origin panel4 type1,
-origin panel4 type2, r33s, r36h, r36hpromax, r36max type1, r36max type2, r36max type3, r36max2,
-r36pro, r36splus, r36t, r36tmax, r36ultra, r36ultrax, r36xx, r40s, r40xx, r40xxpromax, r45h,
-r46h, r50h, r50s, rf35h, rf40h, rf45h, rf45v, rf55h, rg351mp, rg351p, rg351v panel1,
-rg351v panel2, rg36, rg36pro, rgb10, rgb10max1, rgb10max2, rgb10x, rgb20s, rgbv10, rp1,
-rs16, rx6h, sauce panel1, sauce panel2, sauce panel3, sauce panel4, sauce panel5, t16max,
-u8 panel1, u8 panel2, v21 panel4 rumble test, xf28, xf35h, xf40h, xf40v, xf45v, xgb36, xu10
-```
-
-</details>
-
----
-
-## 📦 Quick Start & Installation
-
-We provide two installation flavors to fit your handheld setup:
+Two installation options are available in [GitHub Releases](https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases):
 
 ### Option 1: Lightweight Online Package (`snfetchplayer.zip` ~128 KB)
 *Recommended for Wi-Fi enabled handhelds.*
-1. Download `snfetchplayer.zip` from [GitHub Releases](https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases).
-2. Extract the archive directly into your SD card's `ports/` directory:
+1. Download `snfetchplayer.zip`.
+2. Extract the archive into your SD card's `ports/` directory:
    ```text
    /roms/ports/
    ├── SNfetchPLAYER.sh
    └── snfetchplayer/
    ```
 3. Boot your device, connect to Wi-Fi, and launch **Station North SNfetchPLAYER** from the **Ports** menu.
-4. On first launch, the built-in **High-Speed Asset Downloader** will automatically download and unpack the full 285 MB media bundle (jingles, TV idents, comics) in seconds.
+4. On first launch, the built-in **High-Speed Asset Downloader** will automatically download and unpack the media bundle (jingles, TV idents, comics).
 
 ### Option 2: Full Offline Bundle (`snfetchplayer-full.zip` ~285 MB)
 *Recommended for offline devices or zero-setup plug-and-play.*
-1. Download `snfetchplayer-full.zip` from [GitHub Releases](https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases).
+1. Download `snfetchplayer-full.zip`.
 2. Extract directly to `/roms/ports/` on your SD card.
-3. Plug into your device and play immediately with zero downloads required!
+3. Plug in and play immediately with zero downloads required!
 
 ---
 
 ## 📁 Dedicated Offline Media & Custom Playlist Folders
  
-Want to bring your own personal music library or retro video collection onto your handheld?
-SNfetchPLAYER provides dedicated, auto-indexed repositories with pre-configured genre folders and comprehensive English guide files:
+Want to bring your own personal music library or retro video collection onto your handheld?  
+SNfetchPLAYER automatically detects and indexes local media:
 
 ```text
 /roms/ports/snfetchplayer/
@@ -147,119 +108,21 @@ SNfetchPLAYER provides dedicated, auto-indexed repositories with pre-configured 
 │   ├── HipHop/                # Drop 480p music videos here -> "🎬 Video • HipHop"
 │   ├── Rock/                  # Drop Rock & Concert videos -> "🎬 Video • Rock"
 │   └── README.txt             # Downscaling tips & dual-mode guide
-└── playlists/                 # Online & Android JSON Channels
-    ├── main_top100.json       # Preloaded Station North Channels
+└── playlists/                 # Preloaded Station North Channels
+    ├── main_top100.json       # Top 100 R&B / Soul / Hip-Hop
     ├── us_hiphop_top50.json
-    ├── us_rnb_top50.json
-    └── README.txt             # Android Companion App export instructions
-```
-
-### 📻 Dual Mode Compatibility: Videos in Radio & TV Modes
-- **In TV Mode**: Plays full-screen video scaled to 4:3 with the retro Station North crest watermark and animated lower-third title cards.
-- **In Radio Mode**: Did you know videos can be played as Radio stations? The player automatically strips and routes the audio into the **40-band real-time AGC spectrum analyzer**! Perfect for music videos, concert bootlegs, or YouTube lyric videos with static album covers.
-
-### ⚡ Pro-Tip: Downscaling Videos to 480p with `ffmpeg`
-Most retro handhelds (RK3326/RK3566) feature 640x480 displays. Encoding videos to 480p saves massive SD card space, reduces battery drain, and guarantees zero frame drops:
-
-```bash
-# 1) Downscale a single video to smooth 480p:
-ffmpeg -i "input_1080p.mp4" -vf "scale=640:-2" -c:v libx264 -crf 22 -preset fast -c:a aac -b:a 192k "Artist - Title.mp4"
-
-# 2) Batch-convert an entire folder of videos:
-for f in *.mp4 *.mkv; do ffmpeg -i "$f" -vf "scale=640:-2" -c:v libx264 -crf 22 -preset fast -c:a aac -b:a 192k "480p_${f%.*}.mp4"; done
-
-# 3) Extract pure MP3 audio from a video for the Music Deck:
-ffmpeg -i "video.mp4" -vn -c:a libmp3lame -q:a 2 "Artist - Title.mp3"
-```
- 
----
- 
-## 📱 Native Android APK & Mobile Companion: Station North Android App
-
-Have an Android-powered gaming handheld (e.g. **Retroid Pocket 4/5**, **AYN Odin 2**, **Anbernic RG556 / RG406H**) or want to stream on your smartphone?  
-SNfetchPLAYER is also available as a full-featured, hardware-accelerated **native Android APK**!
-
-👉 **[Download Latest Android APK (GitHub Releases)](https://github.com/StationNorthMedia/SNfetchPLAYER/releases/latest)**  
-👉 **[StationNorthMedia/SNfetchPLAYER Source Repository](https://github.com/StationNorthMedia/SNfetchPLAYER)**
-
-- **Handheld & Controller Ready**: Complete physical gamepad and touchscreen navigation out of the box.
-- **Curate on Mobile / Android**: Build and organize your favorite music & video queues, export them as JSON playlists, and drop them right into your Linux handheld's `/playlists/` directory.
-- **Unified Ecosystem**: Features the same InnerTube mobile streaming architecture, custom track catalogs, and late-night aesthetic universe.
- 
----
-
-## 📢 Words from The Queen (Ready to Share!)
-
-Love the app? Want to spread the word on Reddit, Discord, or Twitter?  
-Here are ready-to-copy promo snippets in The Queen's signature voice. Just copy, paste, and add the link!
-
-### 💬 1. For Reddit (`r/SBCGaming`, `r/RetroHandhelds`, `r/PortMaster`)
-
-```markdown
-**Title:** Turn your retro handheld into a sultry late-night Cyberdeck — Station North SNfetchPLAYER v6.2 (PortMaster / ArkOS / AmberELEC)
-
-Hey everyone,
-
-If you love using your retro handheld (RG351, RGB30, TrimUI, Miyoo, Anbernic RK3326/RK3566/H700) as more than just a rom machine, check out **Station North SNfetchPLAYER**.
-
-It’s a standalone, native 60 FPS Cyberdeck media terminal built from scratch for PortMaster:
-
-📻 **The Queen's Frequency (Radio Mode)**: Real-time 40-band AGC spectrum analyzer, curated R&B/Hip-Hop/Soul radio, and an ambient fullscreen Zen Mode with auto-hiding OSD.
-📺 **Retro TV Broadcast**: Music videos perfectly formatted for 4:3 handheld screens, authentic broadcast lower-third banners, and retro station ident commercials.
-📖 **The Chronicles**: Voice-narrated cyber-lore comics with crisp, boosted typography optimized specifically for 3.5" handheld displays.
-⚙️ **In-App Media Sync**: Fast automated downloading of station media packages, or fully offline 285MB drag-and-drop bundle.
-🎨 **Nord Aurora Aesthetics**: 3D holographic coin-spin logo boot sequence, snappy lerp cursor, and randomized late-night radio quotes.
-
-Check out the GitHub repo and grab the release for your handheld:
-👉 https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster
-
-*"The lights are low, the bass is heavy. Settle in... the Queen is broadcasting."*
+    └── us_rnb_top50.json
 ```
 
 ---
 
-### 🐦 2. For Twitter / X / Threads
+## 🛠️ Technical Specifications (dArkOS / ArkOS)
 
-```text
-Turn your retro handheld into a sleek late-night Cyberdeck 📻✨
-
-Station North SNfetchPLAYER v6.2 is out on PortMaster!
-• 40-Band Realtime Spectrum Visualizer
-• 4:3 Music Video Broadcasts with Retro Banners
-• Voiceover Lore Comics
-• Nord Aurora Cyberpunk UI
-
-Download free 👉 https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster
-
-#SBCGaming #PortMaster #RetroHandheld #ArkOS #IndieDev
-```
-
----
-
-### 🎙️ 3. For Discord & Retro Communities
-
-```text
-👑 **Station North SNfetchPLAYER v6.2 • PortMaster Edition** 👑
-*"Whatever you’re doing right now... do it slower. I set the tempo on this frequency."*
-
-Turn your RK3326 / RK3566 handheld into a portable late-night media suite:
-⚡ 60 FPS native KMSDRM UI with Nord Aurora 3+2 Tile Matrix
-📻 Cyberdeck Live Radio with 40-band dynamic AGC visualizer
-📺 4:3 Retro CRT Music Video Player with broadcast lower-thirds
-📖 The Chronicles voiced lore comic book
-⚡ Full offline plug-and-play bundle + In-app fast asset sync
-
-👉 Grab the ZIP here: https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster
-```
-
----
-
-## 🛠️ Technical Specifications
-
-- **Display Pipeline**: Pygame 2.6 on Linux KMSDRM DirectFB (`/dev/dri/card0`) with sub-pixel hardware V-Sync.
-- **Audio/Video Stream Processing**: Headless InnerTube dynamic stream resolver coupled with low-latency `ffplay` audio/video pipeline and libass subtitle renderer.
-- **Spectrum Analysis**: 40-band software FFT analyzer with logarithmic binning, pink-noise slope compensation, and peak falloff decay.
-- **Packaging**: Standard PortMaster specification (`port.json`, `gameinfo.xml`, `snfetchplayer.gptk`).
+- **Platform Target**: Rockchip RK3326 / 4:3 640×480 Handhelds (R36S, R35S and compatible clones).
+- **Display Pipeline**: Pygame 2.6 on Linux KMSDRM DirectFB (`/dev/dri/card0`) with hardware V-Sync.
+- **Audio Pipeline**: Direct ALSA Hardware Sink (`-f alsa default`) with uncompressed PCM stream coupling.
+- **Stream Processing**: Headless InnerTube streaming engine + low-latency `ffplay` with ASS subtitle rendering.
+- **Spectrum Analysis**: 40-band real-time FFT analyzer with logarithmic binning and AGC (Automatic Gain Control).
 
 ---
 

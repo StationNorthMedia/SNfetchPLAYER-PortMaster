@@ -29,16 +29,13 @@ import random
 import threading
 import subprocess
 import signal
-import shutil
-import logging
 import urllib.request
 import urllib.parse
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
-APP_DIR = Path(__file__).resolve().parent
-
-# Initialize Pygame with CFW default audio driver
+# Audio output for ffplay / ALSA
+os.environ["SDL_AUDIODRIVER"] = "alsa"
 import pygame
 
 pygame.display.init()
@@ -52,8 +49,6 @@ pygame.event.set_blocked([
     pygame.JOYBUTTONDOWN,
     pygame.JOYBUTTONUP,
 ])
-
-DISPLAY_FLAGS = pygame.FULLSCREEN | getattr(pygame, "SCALED", 0)
 
 from extractor import get_stream
 from osd_generator import generate_osd_ass
@@ -84,16 +79,6 @@ NORD12 = (208, 135, 112)   # #d08770 - Aurora Peach / Terracotta (Button 2: Prev
 NORD13 = (235, 203, 139)   # #ebcb8b - Aurora Gold / Amber (Button 5: Repeat Track Toggle [Y])
 NORD14 = (163, 190, 140)   # #a3be8c - Aurora Green / Live On Air / Battery Good
 NORD15 = (180, 142, 173)   # #b48ead - Aurora Lavender / Purple (Button 4: Next Track [►])
-
-# Aurora Randomized Color Palette & Quote Class Mapping
-AURORA_PALETTE = [NORD11, NORD12, NORD13, NORD14, NORD15, NORD7, NORD8, NORD9]
-SPRUECHE_CLASS_MAP = {
-    "radio-red": NORD11,
-    "radio-orange": NORD12,
-    "radio-yellow": NORD13,
-    "radio-green": NORD14,
-    "radio-purple": NORD15,
-}
 
 # Aliases for compatibility
 COLOR_BG            = NORD0
@@ -127,7 +112,8 @@ STATE_SETTINGS     = 4
 class ShuffleQueueManager:
     """Manages non-repeating shuffle queues across sessions and handles single-track repeat"""
     def __init__(self, state_file: str = "shuffle_state.json"):
-        self.state_file = APP_DIR / state_file
+        base_dir = Path("/roms/ports/snfetchplayer") if Path("/roms/ports/snfetchplayer").exists() else Path(".")
+        self.state_file = base_dir / state_file
         self.is_repeat_mode: bool = False
         self.shuffle_queue: List[int] = []
         self.history: List[int] = []
@@ -430,8 +416,8 @@ class ThumbnailManager:
                 return self.cache[cache_key]
 
         candidate_paths = [
-            APP_DIR / f"thumbnails/{youtube_id}.jpg",
             Path(f"thumbnails/{youtube_id}.jpg"),
+            Path(f"/roms/ports/snfetchplayer/thumbnails/{youtube_id}.jpg"),
             Path(f"/tmp/sn_thumb_{youtube_id}.jpg")
         ]
 
@@ -463,7 +449,7 @@ class ThumbnailManager:
         return self._create_placeholder(title, size=sz)
 
     def _fetch_thumb(self, youtube_id: str):
-        local_path = APP_DIR / f"thumbnails/{youtube_id}.jpg"
+        local_path = Path(f"/roms/ports/snfetchplayer/thumbnails/{youtube_id}.jpg")
         if not local_path.parent.exists():
             local_path = Path(f"/tmp/sn_thumb_{youtube_id}.jpg")
         url = f"https://img.youtube.com/vi/{youtube_id}/hqdefault.jpg"
@@ -507,7 +493,7 @@ class StationContentManager:
         self._scan_station_assets()
 
     def _scan_station_assets(self):
-        base_dirs = [APP_DIR / "assets", Path("assets"), Path(".")]
+        base_dirs = [Path("assets"), Path("/roms/ports/snfetchplayer/assets"), Path(".")]
         for b in base_dirs:
             j_dir = b / "jingles"
             if j_dir.exists():
@@ -557,27 +543,18 @@ class SNfetchDashboard:
         self.state = STATE_SPLASH
         self.previous_state = STATE_RADIO
 
-        try:
-            if not pygame.mixer.get_init():
-                pygame.mixer.init()
-        except Exception as e:
-            logging.warning(f"Could not init pygame.mixer: {e}")
-
-        self.audio_sink_args = self._detect_ffmpeg_audio_sink()
-
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
-        pygame.display.set_caption("Station North • SNfetchPLAYER")
-        pygame.mouse.set_visible(False)
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption("Station North • SNfetchPLAYER v5.0")
         self.clock = pygame.time.Clock()
 
-        # Fonts (Elevated for high legibility on 3.5" handheld display)
-        self.font_hero = self._load_font(36, bold=True)
-        self.font_title = self._load_font(26, bold=True)
-        self.font_body = self._load_font(21, bold=True)
-        self.font_artist = self._load_font(20, bold=True)
-        self.font_quote = self._load_font(18, italic=True)
-        self.font_badge = self._load_font(17, bold=True)
-        self.font_small = self._load_font(16, bold=True)
+        # Fonts
+        self.font_hero = self._load_font(32, bold=True)
+        self.font_title = self._load_font(22, bold=True)
+        self.font_body = self._load_font(17, bold=True)
+        self.font_artist = self._load_font(16)
+        self.font_quote = self._load_font(14, italic=True)
+        self.font_badge = self._load_font(13, bold=True)
+        self.font_small = self._load_font(13, bold=True)
 
         # Subsystems
         self.hardware = HardwareManager()
@@ -595,12 +572,9 @@ class SNfetchDashboard:
         self.playlist: List[Dict] = []
         self._discover_playlists()
 
-        # Quotes / Lore & Aurora Styling
-        self.quotes: List[Dict[str, Any]] = []
-        self.current_quote: str = "The lights are low, the bass is heavy. Station North."
-        self.current_quote_color: Tuple[int, int, int] = NORD8
-        self._last_quote_time: float = time.time()
-        self._cached_radial_glow: Optional[pygame.Surface] = None
+        # Quotes / Lore
+        self.quotes: List[str] = []
+        self.current_quote = "The lights are low, the bass is heavy. Station North."
         self._load_quotes()
 
         # The Chronicles
@@ -611,20 +585,8 @@ class SNfetchDashboard:
         self.chronicles_playing = False
         self._load_chronicles()
 
-        # UI State & Focus Cursor (v6.0 3+2 Tile Matrix & 3D Intro Splash)
-        self.splash_cursor = 0  # 0=Radio, 1=TV, 2=Chronicles, 3=Settings, 4=Exit
-        self.intro_active = True
-        self.intro_start_time = time.time()
-        self.intro_angle = 0.0
-        self.intro_transitioning = False
-        self.intro_transition_start = 0.0
-        self.cursor_rect_current = None
-        self._cursor_fx: Optional[float] = None
-        self._cursor_fy: Optional[float] = None
-        self._cursor_fw: Optional[float] = None
-        self._cursor_fh: Optional[float] = None
-        self.splash_enter_time = time.time()
-
+        # UI State & Focus Cursor
+        self.splash_cursor = 0
         self.cockpit_focus_idx = 2 # Default focused button: Play/Pause (idx 2)
         self.current_idx = 0
         self.cursor_idx = 0
@@ -674,33 +636,6 @@ class SNfetchDashboard:
         # Start asset sync check in background
         self._start_background_asset_sync()
 
-    def _detect_ffmpeg_audio_sink(self) -> List[str]:
-        # Check pulse first (standard on ROCKNIX / modern CFWs with PipeWire / PulseAudio)
-        try:
-            res = subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "quiet", "-f", "lavfi", "-i", "anullsrc", "-t", "0.02", "-f", "pulse", "default"],
-                timeout=0.4
-            )
-            if res.returncode == 0:
-                logging.info("Audio Sink: PulseAudio / PipeWire detected.")
-                return ["-f", "pulse", "default"]
-        except Exception:
-            pass
-
-        # Try ALSA default
-        try:
-            res = subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "quiet", "-f", "lavfi", "-i", "anullsrc", "-t", "0.02", "-f", "alsa", "default"],
-                timeout=0.4
-            )
-            if res.returncode == 0:
-                logging.info("Audio Sink: ALSA default detected.")
-                return ["-f", "alsa", "default"]
-        except Exception:
-            pass
-
-        return ["-f", "alsa", "default"]
-
     def _load_font(self, size: int, bold=False, italic=False) -> pygame.font.Font:
         try:
             for name in ["dejavusans", "freesans", "arial", "helvetica", "sans"]:
@@ -712,28 +647,29 @@ class SNfetchDashboard:
         return pygame.font.Font(None, size)
 
     def _load_logo(self) -> Optional[pygame.Surface]:
-        paths = [APP_DIR / "sn_logo.png", Path("sn_logo.png")]
+        paths = [Path("sn_logo.png"), Path("/roms/ports/snfetchplayer/sn_logo.png")]
         for p in paths:
             if p.exists():
                 try:
                     img = pygame.image.load(str(p))
                     if pygame.display.get_surface():
                         img = img.convert_alpha()
-                    # Scale to 67x42 keeping 400:250 ratio for header
-                    return pygame.transform.smoothscale(img, (67, 42))
+                    img.set_alpha(166)  # 65% opacity
+                    return pygame.transform.smoothscale(img, (46, 29))
                 except Exception:
                     pass
         return None
 
     def _load_large_logo(self) -> Optional[pygame.Surface]:
-        paths = [APP_DIR / "sn_logo.png", Path("sn_logo.png")]
+        paths = [Path("sn_logo.png"), Path("/roms/ports/snfetchplayer/sn_logo.png")]
         for p in paths:
             if p.exists():
                 try:
                     img = pygame.image.load(str(p))
                     if pygame.display.get_surface():
                         img = img.convert_alpha()
-                    return img
+                    img.set_alpha(166)
+                    return pygame.transform.smoothscale(img, (200, 126))
                 except Exception:
                     pass
         return None
@@ -741,10 +677,10 @@ class SNfetchDashboard:
     def _discover_playlists(self):
         self.available_playlists = []
         dirs_to_check = [
-            APP_DIR / "assets/playlists",
-            APP_DIR / "playlists",
             Path("assets/playlists"),
             Path("playlists"),
+            Path("/roms/ports/snfetchplayer/assets/playlists"),
+            Path("/roms/ports/snfetchplayer/playlists"),
             Path(".")
         ]
         found_paths = {}
@@ -753,7 +689,7 @@ class SNfetchDashboard:
             if d.exists():
                 for p in d.glob("*.json"):
                     name = p.stem.lower()
-                    if name in ["sprueche", "settings", "chronicles_data", "extractor_rules", "shuffle_state", "catalog_manifest", "port"]:
+                    if name in ["sprueche", "settings", "chronicles_data", "extractor_rules", "shuffle_state", "catalog_manifest"]:
                         continue
                     if name not in found_paths:
                         found_paths[name] = p
@@ -774,100 +710,6 @@ class SNfetchDashboard:
                 title = labels.get(key, f"Playlist: {p.stem.upper()}")
                 self.available_playlists.append({"title": title, "path": str(p.resolve())})
 
-        # --- DISCOVER LOCAL MEDIA FILES & FOLDERS ---
-        MEDIA_AUDIO_EXTS = {".mp3", ".flac", ".ogg", ".wav", ".m4a", ".opus", ".aac"}
-        MEDIA_VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v"}
-        ALL_MEDIA_EXTS = MEDIA_AUDIO_EXTS | MEDIA_VIDEO_EXTS
-
-        local_bases = [
-            APP_DIR / "music",
-            APP_DIR / "videos",
-            APP_DIR / "playlists",
-            Path("music"),
-            Path("videos"),
-            Path("playlists"),
-        ]
-        seen_dirs = set()
-
-        for b_dir in local_bases:
-            if not b_dir.exists():
-                continue
-            try:
-                resolved_b = b_dir.resolve()
-            except Exception:
-                resolved_b = b_dir
-            if resolved_b in seen_dirs:
-                continue
-            seen_dirs.add(resolved_b)
-
-            b_name = b_dir.name.lower()
-            if "music" in b_name:
-                category_tag = "🎵 Music"
-            elif "video" in b_name:
-                category_tag = "🎬 Video"
-            else:
-                category_tag = "📁 Local"
-
-            # 1. Media files directly in base directory
-            root_tracks = []
-            try:
-                for item in sorted(b_dir.iterdir()):
-                    if item.is_file() and item.suffix.lower() in ALL_MEDIA_EXTS:
-                        stem = item.stem
-                        artist = "Local Media"
-                        title = stem
-                        if " - " in stem:
-                            parts = stem.split(" - ", 1)
-                            artist = parts[0].strip()
-                            title = parts[1].strip()
-                        root_tracks.append({
-                            "title": title,
-                            "artist": artist,
-                            "path": str(item.resolve()),
-                            "local": True,
-                            "is_video": item.suffix.lower() in MEDIA_VIDEO_EXTS
-                        })
-            except Exception:
-                pass
-
-            if root_tracks:
-                self.available_playlists.append({
-                    "title": f"{category_tag} • All Tracks",
-                    "path": str(b_dir.resolve()),
-                    "items": root_tracks
-                })
-
-            # 2. Subdirectories inside base directory (e.g. music/HipHop, videos/Rock)
-            try:
-                for sub in sorted(b_dir.iterdir()):
-                    if sub.is_dir() and not sub.name.startswith("."):
-                        sub_tracks = []
-                        for item in sorted(sub.iterdir()):
-                            if item.is_file() and item.suffix.lower() in ALL_MEDIA_EXTS:
-                                stem = item.stem
-                                artist = "Local Media"
-                                title = stem
-                                if " - " in stem:
-                                    parts = stem.split(" - ", 1)
-                                    artist = parts[0].strip()
-                                    title = parts[1].strip()
-                                sub_tracks.append({
-                                    "title": title,
-                                    "artist": artist,
-                                    "path": str(item.resolve()),
-                                    "local": True,
-                                    "is_video": item.suffix.lower() in MEDIA_VIDEO_EXTS
-                                })
-                        if sub_tracks:
-                            label = sub.name.replace("_", " ").replace("-", " ")
-                            self.available_playlists.append({
-                                "title": f"{category_tag} • {label}",
-                                "path": str(sub.resolve()),
-                                "items": sub_tracks
-                            })
-            except Exception:
-                pass
-
         if not self.available_playlists:
             self.available_playlists.append({"title": "Station North • Standard", "path": "playlist.json"})
 
@@ -878,81 +720,36 @@ class SNfetchDashboard:
         if idx >= len(self.available_playlists):
             idx = 0
         item = self.available_playlists[idx]
-        if "items" in item:
-            self.playlist = list(item["items"])
-        else:
-            try:
-                with open(item["path"], "r", encoding="utf-8") as f:
-                    self.playlist = json.load(f)
-            except Exception:
-                self.playlist = []
+        try:
+            with open(item["path"], "r", encoding="utf-8") as f:
+                self.playlist = json.load(f)
+        except Exception:
+            self.playlist = []
 
         self.shuffle_mgr.init_playlist(len(self.playlist), playlist_id=item["title"])
         self.current_idx = self.shuffle_mgr.get_current_idx()
         self.cursor_idx = self.current_idx
 
     def _load_quotes(self):
-        self.quotes = []
-        for q_path in [APP_DIR / "sprueche.json", Path("sprueche.json")]:
+        for q_path in [Path("sprueche.json"), Path("/roms/ports/snfetchplayer/sprueche.json")]:
             if q_path.exists():
                 try:
                     with open(q_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                        for item in data:
-                            if isinstance(item, dict) and "text" in item:
-                                cls_name = item.get("class", item.get("color", ""))
-                                default_col = SPRUECHE_CLASS_MAP.get(cls_name, None)
-                                self.quotes.append({
-                                    "text": item["text"].strip(),
-                                    "color": default_col
-                                })
-                            elif isinstance(item, str) and item.strip():
-                                self.quotes.append({"text": item.strip(), "color": None})
-                    if self.quotes:
-                        break
+                        self.quotes = [q.get("text", "") for q in data if "text" in q]
+                    break
                 except Exception:
                     pass
         self._update_quote()
 
     def _update_quote(self):
         if self.quotes:
-            q = random.choice(self.quotes)
-            self.current_quote = q["text"]
-            # Always assign a randomized Aurora color per user request
-            self.current_quote_color = random.choice(AURORA_PALETTE)
-        else:
-            self.current_quote = "The lights are low, the bass is heavy. Station North."
-            self.current_quote_color = random.choice(AURORA_PALETTE)
-        self._last_quote_time = time.time()
-
-    def _check_cycle_quote(self):
-        now = time.time()
-        if now - self._last_quote_time > 8.0:
-            self._update_quote()
-
-    def _render_wrapped_lines(self, text: str, font: pygame.font.Font, max_w: int) -> List[str]:
-        words = text.split(" ")
-        lines = []
-        cur_line = []
-        for w in words:
-            test_line = " ".join(cur_line + [w])
-            if font.size(test_line)[0] <= max_w:
-                cur_line.append(w)
-            else:
-                if cur_line:
-                    lines.append(" ".join(cur_line))
-                    cur_line = [w]
-                else:
-                    lines.append(w)
-                    cur_line = []
-        if cur_line:
-            lines.append(" ".join(cur_line))
-        return lines
+            self.current_quote = random.choice(self.quotes)
 
     def _load_chronicles(self):
         paths = [
-            APP_DIR / "assets/comic/chronicles_data.json",
-            Path("assets/comic/chronicles_data.json")
+            Path("assets/comic/chronicles_data.json"),
+            Path("/roms/ports/snfetchplayer/assets/comic/chronicles_data.json")
         ]
         for p in paths:
             if p.exists():
@@ -983,9 +780,11 @@ class SNfetchDashboard:
         """Asynchronously downloads missing 480p TV idents, Jingles and Comics from GitHub"""
         try:
             # 1. Base directory detection
-            base_dir = APP_DIR / "assets"
+            base_dir = Path("assets")
+            if not base_dir.exists() and Path("/roms/ports/snfetchplayer/assets").exists():
+                base_dir = Path("/roms/ports/snfetchplayer/assets")
             base_dir.mkdir(parents=True, exist_ok=True)
-            app_dir = APP_DIR
+            app_dir = base_dir.resolve().parent
 
             manifest_path = base_dir / "catalog_manifest.json"
             manifest = None
@@ -1000,34 +799,12 @@ class SNfetchDashboard:
             if not manifest:
                 self.sync_status_text = "Fetching asset catalog from GitHub..."
                 manifest_url = "https://raw.githubusercontent.com/StationNorthMedia/SNfetchPLAYER-PortMaster/main/assets/catalog_manifest.json"
-                raw_data = None
-                try:
-                    c_res = subprocess.run(
-                        ["curl", "-s", "-L", "-k", "--connect-timeout", "12", "--max-time", "25",
-                         "-H", "User-Agent: SNfetchPLAYER-PortMaster/6.2", manifest_url],
-                        capture_output=True,
-                        timeout=30
-                    )
-                    if c_res.returncode == 0 and c_res.stdout:
-                        raw_data = c_res.stdout.decode("utf-8", errors="replace")
-                except Exception:
-                    raw_data = None
-
-                if not raw_data:
-                    try:
-                        req = urllib.request.Request(manifest_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/6.2"})
-                        with urllib.request.urlopen(req, timeout=12) as resp:
-                            raw_data = resp.read().decode("utf-8", errors="replace")
-                    except Exception:
-                        raw_data = None
-
-                if raw_data:
-                    try:
-                        manifest = json.loads(raw_data)
-                        with open(manifest_path, "w", encoding="utf-8") as f:
-                            f.write(raw_data)
-                    except Exception:
-                        manifest = None
+                req = urllib.request.Request(manifest_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/5.0"})
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    raw_data = resp.read().decode("utf-8")
+                    manifest = json.loads(raw_data)
+                    with open(manifest_path, "w", encoding="utf-8") as f:
+                        f.write(raw_data)
 
             if not manifest:
                 return
@@ -1087,7 +864,6 @@ class SNfetchDashboard:
             # If > 25 files are missing, download the full asset archive in one high-throughput stream
             if total_needed > 25:
                 bundle_urls = [
-                    "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v6.2.0/snfetchplayer-assets.zip",
                     "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v5.0.0/snfetchplayer-assets.zip",
                     "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v4.0.0/snfetchplayer-assets.zip"
                 ]
@@ -1097,76 +873,41 @@ class SNfetchDashboard:
                 for b_url in bundle_urls:
                     try:
                         self.sync_status_text = "Connecting to High-Speed Asset Server..."
-                        if tmp_zip.exists():
-                            try:
-                                tmp_zip.unlink()
-                            except Exception:
-                                pass
+                        req = urllib.request.Request(b_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/5.0"})
+                        with urllib.request.urlopen(req, timeout=15) as resp:
+                            content_len_hdr = resp.headers.get("Content-Length")
+                            total_bytes = int(content_len_hdr) if content_len_hdr else 298013869
+                            downloaded_bytes = 0
+                            last_update_time = time.time()
 
-                        curl_success = False
-                        total_bytes = 298013869
+                            with open(tmp_zip, "wb") as out_f:
+                                while True:
+                                    chunk = resp.read(262144)  # 256KB chunks
+                                    if not chunk:
+                                        break
+                                    out_f.write(chunk)
+                                    downloaded_bytes += len(chunk)
+                                    now = time.time()
+                                    if now - last_update_time > 0.25 or downloaded_bytes >= total_bytes:
+                                        last_update_time = now
+                                        dl_mb = downloaded_bytes / (1024 * 1024)
+                                        tot_mb = total_bytes / (1024 * 1024)
+                                        pct = min(99.0, (downloaded_bytes / total_bytes) * 100.0)
+                                        self.sync_pct = pct
+                                        self.sync_status_text = f"Downloading Media Pack: {dl_mb:.1f} MB / {tot_mb:.1f} MB ({int(pct)}%)"
 
-                        # Try native curl first (works across all CFWs without python _ssl / libssl.so.1.1)
-                        try:
-                            curl_cmd = [
-                                "curl", "-L", "-k", "-f", "-s", "-S",
-                                "--connect-timeout", "15",
-                                "-H", "User-Agent: SNfetchPLAYER-PortMaster/6.2",
-                                "-o", str(tmp_zip),
-                                b_url
-                            ]
-                            proc = subprocess.Popen(curl_cmd)
-                            while proc.poll() is None:
-                                time.sleep(0.3)
-                                if tmp_zip.exists():
-                                    downloaded_bytes = tmp_zip.stat().st_size
-                                    dl_mb = downloaded_bytes / (1024 * 1024)
-                                    tot_mb = total_bytes / (1024 * 1024)
-                                    pct = min(98.0, (downloaded_bytes / total_bytes) * 100.0)
-                                    self.sync_pct = pct
-                                    self.sync_status_text = f"Downloading Media Pack: {dl_mb:.1f} MB / {tot_mb:.1f} MB ({int(pct)}%)"
-                            if proc.returncode == 0 and tmp_zip.exists() and tmp_zip.stat().st_size > 50 * 1024 * 1024:
-                                curl_success = True
-                        except Exception:
-                            curl_success = False
-
-                        # Fallback to urllib if curl was unavailable
-                        if not curl_success and not (tmp_zip.exists() and tmp_zip.stat().st_size > 50 * 1024 * 1024):
-                            req = urllib.request.Request(b_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/6.2"})
-                            with urllib.request.urlopen(req, timeout=15) as resp:
-                                content_len_hdr = resp.headers.get("Content-Length")
-                                total_bytes = int(content_len_hdr) if content_len_hdr else 298013869
-                                downloaded_bytes = 0
-                                last_update_time = time.time()
-
-                                with open(tmp_zip, "wb") as out_f:
-                                    while True:
-                                        chunk = resp.read(262144)  # 256KB chunks
-                                        if not chunk:
-                                            break
-                                        out_f.write(chunk)
-                                        downloaded_bytes += len(chunk)
-                                        now = time.time()
-                                        if now - last_update_time > 0.25 or downloaded_bytes >= total_bytes:
-                                            last_update_time = now
-                                            dl_mb = downloaded_bytes / (1024 * 1024)
-                                            tot_mb = total_bytes / (1024 * 1024)
-                                            pct = min(98.0, (downloaded_bytes / total_bytes) * 100.0)
-                                            self.sync_pct = pct
-                                            self.sync_status_text = f"Downloading Media Pack: {dl_mb:.1f} MB / {tot_mb:.1f} MB ({int(pct)}%)"
-
-                        if tmp_zip.exists() and tmp_zip.stat().st_size > 50 * 1024 * 1024:
-                            self.sync_status_text = "Extracting Media Pack (TV Idents, Jingles & Comics)..."
-                            self.sync_pct = 99.0
-                            import zipfile
-                            with zipfile.ZipFile(tmp_zip, "r") as z:
-                                z.extractall(app_dir)
-                            try:
-                                tmp_zip.unlink()
-                            except Exception:
-                                pass
-                            bundle_downloaded = True
-                            break
+                            if tmp_zip.exists() and tmp_zip.stat().st_size > 50 * 1024 * 1024:
+                                self.sync_status_text = "Extracting Media Pack (TV Idents, Jingles & Comics)..."
+                                self.sync_pct = 99.0
+                                import zipfile
+                                with zipfile.ZipFile(tmp_zip, "r") as z:
+                                    z.extractall(app_dir)
+                                try:
+                                    tmp_zip.unlink()
+                                except Exception:
+                                    pass
+                                bundle_downloaded = True
+                                break
                     except Exception as b_err:
                         if tmp_zip.exists():
                             try:
@@ -1198,41 +939,23 @@ class SNfetchDashboard:
                 self.sync_status_text = f"Syncing {itype} ({idx}/{total_needed}): {display_fname}"
 
                 tmp_target = target.with_suffix(target.suffix + ".part")
-                file_done = False
-
-                # 1. Try native curl first (bypasses python _ssl / OpenSSL 1.1)
                 try:
-                    c_res = subprocess.run(
-                        ["curl", "-L", "-k", "-f", "-s", "--connect-timeout", "10", "--max-time", "60",
-                         "-H", "User-Agent: SNfetchPLAYER-PortMaster/6.2", "-o", str(tmp_target), safe_url],
-                        timeout=65
-                    )
-                    if c_res.returncode == 0 and tmp_target.exists() and tmp_target.stat().st_size > 0:
+                    req = urllib.request.Request(safe_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/5.0"})
+                    with urllib.request.urlopen(req, timeout=15) as resp, open(tmp_target, "wb") as out_f:
+                        while True:
+                            chunk = resp.read(65536)
+                            if not chunk:
+                                break
+                            out_f.write(chunk)
+                    if tmp_target.exists() and tmp_target.stat().st_size > 0:
                         tmp_target.rename(target)
-                        file_done = True
-                except Exception:
-                    file_done = False
-
-                # 2. Fallback to urllib if curl was not successful
-                if not file_done:
-                    try:
-                        req = urllib.request.Request(safe_url, headers={"User-Agent": "SNfetchPLAYER-PortMaster/6.2"})
-                        with urllib.request.urlopen(req, timeout=15) as resp, open(tmp_target, "wb") as out_f:
-                            while True:
-                                chunk = resp.read(65536)
-                                if not chunk:
-                                    break
-                                out_f.write(chunk)
-                        if tmp_target.exists() and tmp_target.stat().st_size > 0:
-                            tmp_target.rename(target)
-                            file_done = True
-                    except Exception as dl_err:
-                        if tmp_target.exists():
-                            try:
-                                tmp_target.unlink()
-                            except Exception:
-                                pass
-                        time.sleep(0.3)
+                except Exception as dl_err:
+                    if tmp_target.exists():
+                        try:
+                            tmp_target.unlink()
+                        except Exception:
+                            pass
+                    time.sleep(0.3)
 
                 # Periodically update asset pool so items can be played immediately
                 if idx % 2 == 0 or idx == total_needed:
@@ -1248,88 +971,29 @@ class SNfetchDashboard:
             self.sync_active = False
             self.sync_error = str(e)
 
-    def show_loading_screen(self, title: str = "STATION NORTH TV", subtitle: str = "Initializing Audio Stream..."):
+    def show_loading_screen(self, title="STATION NORTH // LOADING...", subtitle="Initializing Audio Stream..."):
         if not pygame.display.get_init():
             pygame.display.init()
-            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
             pygame.mouse.set_visible(False)
 
         self.screen.fill(NORD0)
-
-        # 1. Harmonized 56px Top Bar
-        top_title = "STATION NORTH TV" if "TV" in title else ("THE CHRONICLES" if "CHRONICLES" in title else "STATION NORTH")
-        self.draw_top_bar(custom_title=top_title, subtitle="CONNECTING TO STREAM • BUFFERING")
-
-        # 2. Centered Content Card (760x420)
-        card_w = 760
-        card_h = 420
-        card_x = (SCREEN_WIDTH - card_w) // 2
-        card_y = (SCREEN_HEIGHT - card_h) // 2 - 10
-        card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
-
-        pygame.draw.rect(self.screen, (24, 28, 36), card_rect, border_radius=20)
-        pygame.draw.rect(self.screen, (46, 52, 64), card_rect, width=2, border_radius=20)
-        # Top Cyan Accent Line
-        self._draw_horizontal_gradient(self.screen, pygame.Rect(card_x + 24, card_y, card_w - 48, 3), NORD8, NORD7)
-
-        # Centered Station North Logo (144x90 keeps 16:10 aspect ratio)
         cx = SCREEN_WIDTH // 2
-        logo_w, logo_h = 144, 90
-        logo_src = self.logo_large if self.logo_large else self.logo_img
-        if logo_src:
-            scaled_logo = pygame.transform.smoothscale(logo_src, (logo_w, logo_h))
-            self.screen.blit(scaled_logo, (cx - logo_w // 2, card_y + 36))
+        cy = SCREEN_HEIGHT // 2 - 40
+        if self.logo_large:
+            self.screen.blit(self.logo_large, (cx - 100, cy - 80))
 
-        # Channel Badge
-        badge_y = card_y + 144
-        badge_txt = "✦ STATION NORTH RETRO BROADCAST ✦"
-        b_surf = self._load_font(16, bold=True).render(badge_txt, True, NORD8)
-        self.screen.blit(b_surf, (cx - b_surf.get_width() // 2, badge_y))
+        t_surf = self._load_font(28, bold=True).render(title, True, NORD8)
+        self.screen.blit(t_surf, (cx - t_surf.get_width() // 2, cy + 60))
 
-        # Parse & Format Video Info cleanly (prevent overflow / breakout)
-        display_text = subtitle
-        if display_text.startswith("Loading Video: "):
-            display_text = display_text[15:]
+        s_surf = self._load_font(18).render(subtitle, True, NORD4)
+        self.screen.blit(s_surf, (cx - s_surf.get_width() // 2, cy + 104))
 
-        if " - " in display_text:
-            parts = display_text.split(" - ", 1)
-            artist_line = parts[0].strip()
-            title_line = parts[1].strip()
-        else:
-            artist_line = ""
-            title_line = display_text.strip()
-
-        cur_y = card_y + 184
-        if artist_line:
-            art_surf = self._load_font(20, bold=True).render(artist_line, True, NORD4)
-            if art_surf.get_width() > card_w - 60:
-                art_surf = self._load_font(18, bold=True).render(artist_line[:40] + "...", True, NORD4)
-            self.screen.blit(art_surf, (cx - art_surf.get_width() // 2, cur_y))
-            cur_y += 34
-
-        t_font = self._load_font(24, bold=True)
-        if t_font.size(title_line)[0] > card_w - 60:
-            t_font = self._load_font(20, bold=True)
-            if t_font.size(title_line)[0] > card_w - 60:
-                title_line = title_line[:46] + "..."
-        tit_surf = t_font.render(title_line, True, (255, 255, 255))
-        self.screen.blit(tit_surf, (cx - tit_surf.get_width() // 2, cur_y))
-
-        # Progress Bar (640px)
-        pbar_w = card_w - 120
-        pbar_h = 14
-        pbar_x = cx - pbar_w // 2
-        pbar_y = card_y + 296
-        pygame.draw.rect(self.screen, (16, 20, 26), (pbar_x, pbar_y, pbar_w, pbar_h), border_radius=7)
-        fill_w = int(pbar_w * 0.72)
-        pygame.draw.rect(self.screen, NORD8, (pbar_x, pbar_y, fill_w, pbar_h), border_radius=7)
-        pygame.draw.rect(self.screen, (255, 255, 255), (pbar_x + fill_w - 12, pbar_y + 2, 8, pbar_h - 4), border_radius=3)
-
-        note_surf = self._load_font(16, bold=True).render("⚡ Resolving Stream via InnerTube • 4:3 Display Fill", True, NORD4)
-        self.screen.blit(note_surf, (cx - note_surf.get_width() // 2, card_y + 332))
-
-        # 3. Harmonized 48px Bottom Bar
-        self.draw_bottom_bar(pills=[("B", "Abbrechen", NORD11)], right_text="v6.0 • PortMaster Edition")
+        pbar_w = 400
+        pbar_x = (SCREEN_WIDTH - pbar_w) // 2
+        pbar_y = cy + 148
+        pygame.draw.rect(self.screen, COLOR_BAR_BG, (pbar_x, pbar_y, pbar_w, 8), border_radius=4)
+        pygame.draw.rect(self.screen, NORD8, (pbar_x, pbar_y, int(pbar_w * 0.75), 8), border_radius=4)
 
         pygame.display.flip()
 
@@ -1393,7 +1057,7 @@ class SNfetchDashboard:
                         "ffmpeg", "-y",
                         "-i", str(jingle_path),
                         "-filter_complex", "[0:a]asplit=2[out1][out2]",
-                        "-map", "[out1]", *self.audio_sink_args,
+                        "-map", "[out1]", "-f", "alsa", "default",
                         "-map", "[out2]", "-f", "s16le", "-ac", "1", "-ar", "22050", "-"
                     ]
                     with self._audio_lock:
@@ -1417,32 +1081,8 @@ class SNfetchDashboard:
                 return
 
             track = self.playlist[idx]
-            local_path = track.get("path") or track.get("file")
-            is_local = False
-            stream_url = None
-            duration = 210.0
-
-            if local_path and Path(local_path).exists():
-                is_local = True
-                stream_url = str(Path(local_path).resolve())
-            elif track.get("youtubeId") and (Path(str(track.get("youtubeId"))).exists() or str(track.get("youtubeId")).startswith("/") or str(track.get("youtubeId")).startswith(".")):
-                if Path(str(track.get("youtubeId"))).exists():
-                    is_local = True
-                    stream_url = str(Path(str(track.get("youtubeId"))).resolve())
-
-            if is_local:
-                try:
-                    prb = subprocess.run([
-                        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                        "-of", "default=noprint_wrappers=1:nokey=1", stream_url
-                    ], capture_output=True, text=True, timeout=1.5)
-                    if prb.stdout.strip():
-                        duration = float(prb.stdout.strip())
-                except Exception:
-                    pass
-            else:
-                yt_id = track.get("youtubeId")
-                stream_url, duration = get_stream(yt_id, prefer_audio_only=True)
+            yt_id = track.get("youtubeId")
+            stream_url, duration = get_stream(yt_id, prefer_audio_only=True)
 
             if stream_url and self.state == STATE_RADIO and self._resolve_id == req_id:
                 self.current_idx = idx
@@ -1453,7 +1093,7 @@ class SNfetchDashboard:
                     "ffmpeg", "-y",
                     "-i", stream_url,
                     "-filter_complex", "[0:a]asplit=2[out1][out2]",
-                    "-map", "[out1]", *self.audio_sink_args,
+                    "-map", "[out1]", "-f", "alsa", "default",
                     "-map", "[out2]", "-f", "s16le", "-ac", "1", "-ar", "22050", "-"
                 ]
                 with self._audio_lock:
@@ -1572,7 +1212,7 @@ class SNfetchDashboard:
 
             if not pygame.display.get_init():
                 pygame.display.init()
-                self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
+                self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
                 pygame.mouse.set_visible(False)
 
             track = self.playlist[curr_idx]
@@ -1591,29 +1231,13 @@ class SNfetchDashboard:
                         break
                     if not pygame.display.get_init():
                         pygame.display.init()
-                        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
+                        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
                         pygame.mouse.set_visible(False)
                     self.show_loading_screen("STATION NORTH TV", f"Loading Video: {track_artist} - {track_title}")
 
-            local_path = track.get("path") or track.get("file")
-            is_local = False
-            stream_url = None
-            if local_path and Path(local_path).exists():
-                is_local = True
-                stream_url = str(Path(local_path).resolve())
-            elif track.get("youtubeId") and (Path(str(track.get("youtubeId"))).exists() or str(track.get("youtubeId")).startswith("/") or str(track.get("youtubeId")).startswith(".")):
-                if Path(str(track.get("youtubeId"))).exists():
-                    is_local = True
-                    stream_url = str(Path(str(track.get("youtubeId"))).resolve())
-
-            if not is_local:
-                yt_id = track.get("youtubeId")
-                stream_url, _ = get_stream(yt_id, prefer_audio_only=False)
-
+            yt_id = track.get("youtubeId")
+            stream_url, _ = get_stream(yt_id, prefer_audio_only=False)
             if not stream_url:
-                logging.warning(f"Could not resolve stream for '{track_title}'. Checking next track...")
-                self.show_loading_screen("STREAM RESOLVER", f"Unable to resolve stream: {track_title}\nChecking connection...")
-                time.sleep(1.0)
                 curr_idx = self.shuffle_mgr.advance_next()
                 show_osd_this_track = False
                 continue
@@ -1621,70 +1245,32 @@ class SNfetchDashboard:
             # Bauchbinde via nativem ASS-Untertitel (blendet sanft ein und nach 4.8s automatisch aus)
             osd_file = generate_osd_ass(track, show_osd=True, is_repeat=self.shuffle_mgr.is_repeat_mode)
 
-            logo_file = APP_DIR / "sn_logo.png"
-            logo_path = str(logo_file) if logo_file.exists() else str(Path("sn_logo.png").resolve())
+            logo_path = "/roms/ports/snfetchplayer/sn_logo.png"
+            if not Path(logo_path).exists():
+                logo_path = str(Path("sn_logo.png").resolve())
 
-            is_audio_only = is_local and Path(stream_url).suffix.lower() in {".mp3", ".flac", ".ogg", ".wav", ".m4a", ".opus", ".aac"}
-            if not is_audio_only:
-                # 4:3 Display-Fill + 65% Logo Transparenz + Elegante Bauchbinde (Crash-sicheres Scale & Crop)
-                vf_filter = (
-                    f"scale=1024:768:force_original_aspect_ratio=increase,crop=1024:768 [main]; "
-                    f"movie={logo_path},scale=175:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
-                    f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26, "
-                    f"ass='{osd_file}'"
-                )
-                cmd = [
-                    "ffplay",
-                    "-fs",
-                    "-autoexit",
-                    "-sync", "audio",
-                    "-window_title", f"STATION NORTH • {track_artist} - {track_title}",
-                    "-loglevel", "error",
-                    "-vf", vf_filter,
-                    stream_url
-                ]
-            else:
-                # Local audio file played in TV mode: show Station North visualizer waves + ASS banner
-                vf_filter = (
-                    f"movie={logo_path},scale=240:-1,format=rgba,colorchannelmixer=aa=0.75 [logo]; "
-                    f"[in][logo] overlay=(W-w)/2:(H-h)/2, "
-                    f"ass='{osd_file}'"
-                )
-                cmd = [
-                    "ffplay",
-                    "-fs",
-                    "-autoexit",
-                    "-sync", "audio",
-                    "-window_title", f"STATION NORTH • {track_artist} - {track_title}",
-                    "-loglevel", "error",
-                    "-showmode", "waves",
-                    "-vf", vf_filter,
-                    stream_url
-                ]
+            # 4:3 Display-Fill + 65% Logo Transparenz + Elegante Bauchbinde (Crash-sicheres Scale & Crop)
+            vf_filter = (
+                f"scale=1024:768:force_original_aspect_ratio=increase,crop=1024:768 [main]; "
+                f"movie={logo_path},scale=175:-1,format=rgba,colorchannelmixer=aa=0.65 [logo]; "
+                f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26, "
+                f"ass='{osd_file}'"
+            )
 
-            player_bin = "ffplay" if shutil.which("ffplay") else ("mpv" if shutil.which("mpv") else None)
-            if not player_bin:
-                logging.error("Neither ffplay nor mpv found on device.")
-                self.show_loading_screen("VIDEO PLAYER NOT FOUND", "Install ffplay or mpv for video playback")
-                time.sleep(2.0)
-                return
+            cmd = [
+                "ffplay",
+                "-fs",
+                "-autoexit",
+                "-sync", "audio",
+                "-window_title", f"STATION NORTH • {track_artist} - {track_title}",
+                "-loglevel", "error",
+                "-vf", vf_filter,
+                stream_url
+            ]
 
-            if player_bin == "mpv":
-                cmd = ["mpv", "--fs", "--no-terminal", f"--title=STATION NORTH • {track_artist} - {track_title}", stream_url]
-
-            try:
-                pygame.display.quit()
-                play_start_time = time.time()
-                proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
-            except Exception as e:
-                logging.error(f"Failed to launch video player: {e}")
-                if not pygame.display.get_init():
-                    pygame.display.init()
-                    self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
-                    pygame.mouse.set_visible(False)
-                self.show_loading_screen("PLAYBACK ERROR", f"Cannot launch video player: {e}")
-                time.sleep(2.0)
-                return
+            pygame.display.quit()
+            play_start_time = time.time()
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
 
             devices = self._get_input_devices()
             action = "AUTO"
@@ -1841,16 +1427,17 @@ class SNfetchDashboard:
 
         if not pygame.display.get_init():
             pygame.display.init()
-            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
             pygame.mouse.set_visible(False)
-        pygame.display.set_caption("Station North • SNfetchPLAYER")
+        pygame.display.set_caption("Station North • SNfetchPLAYER v5.0")
         time.sleep(0.12)
         pygame.event.clear()
         self.is_playing = False
 
     def _play_tv_station_id_fullscreen(self, clip_path: Path) -> bool:
-        logo_file = APP_DIR / "sn_logo.png"
-        logo_path = str(logo_file) if logo_file.exists() else str(Path("sn_logo.png").resolve())
+        logo_path = "/roms/ports/snfetchplayer/sn_logo.png"
+        if not Path(logo_path).exists():
+            logo_path = str(Path("sn_logo.png").resolve())
 
         # 4:3 Display-Fill + 65% Logo Transparenz unten rechts (Crash-sicheres Scale & Crop)
         vf_filter = (
@@ -1859,35 +1446,18 @@ class SNfetchDashboard:
             f"[main][logo] overlay=main_w-overlay_w-30:main_h-overlay_h-26"
         )
 
-        player_bin = "ffplay" if shutil.which("ffplay") else ("mpv" if shutil.which("mpv") else None)
-        if not player_bin:
-            logging.warning("Video player not found for TV station ID.")
-            return True
-
-        if player_bin == "mpv":
-            cmd = ["mpv", "--fs", "--no-terminal", "--title=STATION NORTH TV IDENT", str(clip_path)]
-        else:
-            cmd = [
-                "ffplay",
-                "-fs",
-                "-autoexit",
-                "-sync", "audio",
-                "-window_title", "STATION NORTH TV IDENT",
-                "-loglevel", "error",
-                "-vf", vf_filter,
-                str(clip_path)
-            ]
-
-        try:
-            pygame.display.quit()
-            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
-        except Exception as e:
-            logging.error(f"Failed to play TV ID: {e}")
-            if not pygame.display.get_init():
-                pygame.display.init()
-                self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
-                pygame.mouse.set_visible(False)
-            return True
+        cmd = [
+            "ffplay",
+            "-fs",
+            "-autoexit",
+            "-sync", "audio",
+            "-window_title", "STATION NORTH TV IDENT",
+            "-loglevel", "error",
+            "-vf", vf_filter,
+            str(clip_path)
+        ]
+        pygame.display.quit()
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
 
         devices = self._get_input_devices()
         interrupted = False
@@ -1957,11 +1527,6 @@ class SNfetchDashboard:
     # --- CHRONICLES AUDIO (FAITH NARRATION) ---
     def stop_chronicles_audio(self):
         with self._audio_lock:
-            try:
-                if pygame.mixer.get_init():
-                    pygame.mixer.music.stop()
-            except Exception:
-                pass
             proc = self.chronicles_proc
             self.chronicles_proc = None
             self.chronicles_playing = False
@@ -1987,8 +1552,8 @@ class SNfetchDashboard:
         panel_id = item.get("id", self.chronicles_idx + 1)
         audio_name = f"p_{panel_id:03d}.mp3"
         audio_paths = [
-            APP_DIR / "assets/comic/audio" / audio_name,
-            Path("assets/comic/audio") / audio_name
+            Path("assets/comic/audio") / audio_name,
+            Path("/roms/ports/snfetchplayer/assets/comic/audio") / audio_name
         ]
         target_path = None
         for ap in audio_paths:
@@ -1998,35 +1563,9 @@ class SNfetchDashboard:
 
         if target_path:
             self.stop_chronicles_audio()
-            played = False
-            # 1. Native Pygame Mixer (Internal, no external binary dependency, zero crash risk)
-            try:
-                if not pygame.mixer.get_init():
-                    pygame.mixer.init()
-                pygame.mixer.music.load(str(target_path))
-                pygame.mixer.music.play()
-                self.chronicles_playing = True
-                played = True
-                logging.info(f"Playing Chronicles narration via pygame.mixer: {target_path}")
-            except Exception as mix_err:
-                logging.warning(f"pygame.mixer narration error: {mix_err}")
-
-            # 2. Subprocess fallback if mixer is unavailable
-            if not played:
-                try:
-                    player = "ffplay" if shutil.which("ffplay") else ("aplay" if shutil.which("aplay") else None)
-                    if player == "ffplay":
-                        cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(target_path)]
-                        self.chronicles_proc = subprocess.Popen(cmd)
-                        self.chronicles_playing = True
-                    elif player == "aplay":
-                        cmd = ["aplay", "-q", str(target_path)]
-                        self.chronicles_proc = subprocess.Popen(cmd)
-                        self.chronicles_playing = True
-                except Exception as sub_err:
-                    logging.error(f"Narration subprocess error: {sub_err}")
-        else:
-            logging.warning(f"Voiceover audio file '{audio_name}' not found. Please sync media assets in Settings.")
+            cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(target_path)]
+            self.chronicles_proc = subprocess.Popen(cmd)
+            self.chronicles_playing = True
 
     # =========================================================================
     # RENDER HELPER: THE 5-BUTTON PASTEL COCKPIT (MATCHING ANDROID APP)
@@ -2134,44 +1673,8 @@ class SNfetchDashboard:
                     surface.blit(one_surf, (cx - one_surf.get_width() // 2, cy - one_surf.get_height() // 2))
 
     # =========================================================================
-    # VECTOR ICON HELPERS FOR SPLASH SCREEN & MAIN MENU (NORD SPECIFICATION)
+    # VECTOR ICON HELPERS FOR SPLASH SCREEN
     # =========================================================================
-    def _draw_vertical_gradient(self, surface: pygame.Surface, rect: pygame.Rect, col_top: Tuple[int, int, int], col_bottom: Tuple[int, int, int], border_radius: int = 0):
-        """Draws a high-precision vertical linear gradient with optional rounded corners"""
-        temp = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        h = max(rect.height - 1, 1)
-        for y in range(rect.height):
-            factor = y / h
-            r = int(col_top[0] + factor * (col_bottom[0] - col_top[0]))
-            g = int(col_top[1] + factor * (col_bottom[1] - col_top[1]))
-            b = int(col_top[2] + factor * (col_bottom[2] - col_top[2]))
-            pygame.draw.line(temp, (r, g, b), (0, y), (rect.width, y))
-
-        if border_radius > 0:
-            mask = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-            pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, rect.width, rect.height), border_radius=border_radius)
-            temp.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
-
-        surface.blit(temp, rect.topleft)
-
-    def _draw_horizontal_gradient(self, surface: pygame.Surface, rect: pygame.Rect, col_left: Tuple[int, int, int], col_right: Tuple[int, int, int], border_radius: int = 0):
-        """Draws a high-precision horizontal linear gradient with optional rounded corners"""
-        temp = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        w = max(rect.width - 1, 1)
-        for x in range(rect.width):
-            factor = x / w
-            r = int(col_left[0] + factor * (col_right[0] - col_left[0]))
-            g = int(col_left[1] + factor * (col_right[1] - col_left[1]))
-            b = int(col_left[2] + factor * (col_right[2] - col_left[2]))
-            pygame.draw.line(temp, (r, g, b), (x, 0), (x, rect.height))
-
-        if border_radius > 0:
-            mask = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-            pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, rect.width, rect.height), border_radius=border_radius)
-            temp.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
-
-        surface.blit(temp, rect.topleft)
-
     def _draw_splash_radio_icon(self, surface: pygame.Surface, cx: int, cy: int, col: Tuple[int, int, int]):
         """Vector Retro Boombox / Radio Tuner icon"""
         bw, bh = 114, 64
@@ -2257,362 +1760,124 @@ class SNfetchDashboard:
         # Bookmark ribbon
         pygame.draw.line(surface, col, (cx, sy_bot), (cx + 8, sy_bot + 16), 3)
 
-    def _draw_pro_gear_icon(self, surface: pygame.Surface, cx: int, cy: int, col: Tuple[int, int, int]):
-        """High-precision mechanical gear with 8 chamfered teeth and center hub"""
-        r_outer = 38
-        r_inner = 28
-        r_hub = 12
-        pts = []
-        num_teeth = 8
-        for i in range(num_teeth * 2):
-            angle = (i * 360 / (num_teeth * 2)) - 90
-            rad = math.radians(angle)
-            r = r_outer if i % 2 == 0 else r_inner
-            pts.append((cx + math.cos(rad) * r, cy + math.sin(rad) * r))
-        pygame.draw.polygon(surface, col, pts)
-        pygame.draw.circle(surface, (20, 24, 32), (cx, cy), r_hub)
-        pygame.draw.circle(surface, col, (cx, cy), r_hub, 2)
-
-    def _draw_pro_exit_icon(self, surface: pygame.Surface, cx: int, cy: int, col: Tuple[int, int, int]):
-        """Professional Emergency Exit / Running Man & Doorway Symbol"""
-        door_w, door_h = 24, 60
-        door_x, door_y = cx + 8, cy - door_h // 2
-        pygame.draw.rect(surface, col, (door_x, door_y, door_w, door_h), width=4, border_radius=4)
-        # Arrow through door
-        pygame.draw.line(surface, col, (door_x + 6, cy), (door_x + 18, cy), 3)
-        pygame.draw.line(surface, col, (door_x + 12, cy - 6), (door_x + 18, cy), 3)
-        pygame.draw.line(surface, col, (door_x + 12, cy + 6), (door_x + 18, cy), 3)
-
-        # Running figure heading towards door
-        hx, hy = cx - 18, cy - 20
-        pygame.draw.circle(surface, col, (hx, hy), 7)
-        pygame.draw.line(surface, col, (hx, hy + 7), (hx + 4, cy + 6), 5)
-        pygame.draw.line(surface, col, (hx + 2, hy + 10), (hx + 16, hy + 4), 4)
-        pygame.draw.line(surface, col, (hx + 2, hy + 10), (hx - 12, hy + 16), 4)
-        pygame.draw.line(surface, col, (hx + 4, cy + 6), (hx + 18, cy + 22), 5)
-        pygame.draw.line(surface, col, (hx + 4, cy + 6), (hx - 14, cy + 20), 5)
-
     # =========================================================================
-    # RENDERER 1: 3D ROTATING LOGO SPLASH & DOCKING TRANSITION (v6.0)
-    # =========================================================================
-    def _draw_3d_intro_splash(self):
-        """Cinematic 3D Y-Axis Rotating Coin-Spin Logo Intro with Harmonized Frame (Glitch-Free)"""
-        self.screen.fill(NORD0)
-
-        # Standard Harmonized Top Bar WITHOUT logo (logo will dock here after spin)
-        self.draw_top_bar(custom_title="STATION NORTH", subtitle="SYSTEM BOOT SEQUENCE • 3D INITIALIZATION", show_logo=False)
-
-        now = time.time()
-        elapsed = now - self.intro_start_time
-
-        cx = SCREEN_WIDTH // 2
-        cy = 388
-        base_w = 340
-        base_h = 212
-
-        # 1. Cached smooth pulsing radial cyan glow behind center
-        pulse = 1.0 + 0.12 * math.sin(elapsed * 4.0)
-        glow_size = int(460 * pulse)
-        if self._cached_radial_glow is None:
-            self._cached_radial_glow = pygame.Surface((460, 460), pygame.SRCALPHA)
-            for r in range(220, 20, -16):
-                alpha = int(14 * (1.0 - r / 220))
-                pygame.draw.circle(self._cached_radial_glow, (136, 192, 208, alpha), (230, 230), r)
-
-        scaled_glow = pygame.transform.smoothscale(self._cached_radial_glow, (glow_size, glow_size))
-        self.screen.blit(scaled_glow, (cx - glow_size // 2, cy - glow_size // 2))
-
-        # 2. 3D Coin Spin (Y-Axis rotation)
-        self.intro_angle = elapsed * 3.6
-        rad = self.intro_angle
-        cos_a = math.cos(rad)
-        sin_a = math.sin(rad)
-        face_is_front = (cos_a >= 0)
-        curr_scale_x = abs(cos_a)
-        curr_w = max(4, int(base_w * curr_scale_x))
-
-        logo_src = self.logo_large if self.logo_large else self.logo_img
-        if logo_src:
-            # Determine active face: Front or Mirrored Back
-            if face_is_front:
-                active_face = logo_src
-            else:
-                active_face = pygame.transform.flip(logo_src, True, False)
-                # Apply shadow shading to reverse side
-                shaded = active_face.copy()
-                shaded.fill((165, 185, 210), special_flags=pygame.BLEND_RGB_MULT)
-                active_face = shaded
-
-            # Scale active face ONCE (super fast & fluid on ARM)
-            face_scaled = pygame.transform.smoothscale(active_face, (curr_w, base_h))
-
-            # 3D Depth / Extrusion Rim (projects behind the face)
-            rim_depth = int(14 * abs(sin_a))
-            # Direction: when rotating counter-clockwise, rim projects along -sin_a
-            rim_dir = -1 if sin_a > 0 else 1
-            if rim_depth > 1:
-                rim_surf = face_scaled.copy()
-                rim_surf.fill((46, 62, 84), special_flags=pygame.BLEND_RGB_MULT)
-                step = 2
-                for ox in range(rim_depth, 0, -step):
-                    self.screen.blit(rim_surf, (cx - curr_w // 2 + ox * rim_dir, cy - base_h // 2))
-
-            # Blit Main Face on top of extrusion with dynamic 3D lighting (no glitchy white rect bars!)
-            if face_is_front:
-                # Subtle specular highlight on front face based on angle to camera
-                shine_val = int(255 * (0.82 + 0.18 * cos_a))
-                lit_face = face_scaled.copy()
-                lit_face.fill((shine_val, shine_val, shine_val), special_flags=pygame.BLEND_RGB_MULT)
-                self.screen.blit(lit_face, (cx - curr_w // 2, cy - base_h // 2))
-            else:
-                self.screen.blit(face_scaled, (cx - curr_w // 2, cy - base_h // 2))
-
-        # 3. Typography below logo (Large & Crisp for 3.5" screen)
-        brand_surf = self._load_font(36, bold=True).render("STATION NORTH", True, NORD6)
-        self.screen.blit(brand_surf, (cx - brand_surf.get_width() // 2, cy + 130))
-
-        status_s = self._load_font(18, bold=True).render("INITIALIZING LIVE AUDIO & BROADCAST STREAMS...", True, NORD8)
-        pygame.draw.circle(self.screen, NORD7, (cx - status_s.get_width() // 2 - 16, cy + 185), 6)
-        self.screen.blit(status_s, (cx - status_s.get_width() // 2, cy + 175))
-
-        # Harmonized Bottom Bar with Skip button
-        self.draw_bottom_bar(pills=[("A", "Überspringen", NORD8)], right_text="v6.0 • PortMaster Edition")
-
-    def _draw_intro_transition(self, ease: float):
-        """Smooth docking transition from 3D rotating splash to docked header & 3+2 menu"""
-        slide_offset = int(60 * (1.0 - ease))
-        self._draw_3plus2_main_menu(slide_offset=slide_offset, alpha=int(255 * ease), show_top_logo=False)
-
-        # Flying / Docking Logo interpolates from center to top-left corner
-        start_x, start_y = SCREEN_WIDTH // 2, 388
-        start_w, start_h = 340, 212
-
-        dest_x, dest_y = 20 + 33, 7 + 21
-        dest_w, dest_h = 67, 42
-
-        cur_cx = int(start_x + (dest_x - start_x) * ease)
-        cur_cy = int(start_y + (dest_y - start_y) * ease)
-        cur_w = max(4, int(start_w + (dest_w - start_w) * ease))
-        cur_h = max(4, int(start_h + (dest_h - start_h) * ease))
-
-        logo_src = self.logo_large if self.logo_large else self.logo_img
-        if logo_src:
-            scaled = pygame.transform.smoothscale(logo_src, (cur_w, cur_h))
-            self.screen.blit(scaled, (cur_cx - cur_w // 2, cur_cy - cur_h // 2))
-
-    # =========================================================================
-    # RENDERER 1: MAIN 3+2 TILE MENU (v6.0 AUTHENTIC NORD AURORA)
+    # RENDERER 1: SPLASH SCREEN (HAUPTPORTAL - PURE VISUAL ARCADE SELECTOR)
     # =========================================================================
     def draw_splash_screen(self):
-        now = time.time()
-        # 1. Handle 3D Intro Splash Phase
-        if self.intro_active:
-            elapsed = now - self.intro_start_time
-            if not self.intro_transitioning and elapsed > 3.8:
-                self.intro_transitioning = True
-                self.intro_transition_start = now
-
-            if self.intro_transitioning:
-                t_elapsed = now - self.intro_transition_start
-                t_progress = min(1.0, t_elapsed / 0.50)
-                # Smooth ease-out cubic
-                ease = 1.0 - math.pow(1.0 - t_progress, 3)
-                if t_progress >= 1.0:
-                    self.intro_active = False
-                    self.intro_transitioning = False
-                else:
-                    self._draw_intro_transition(ease)
-                    return
-            else:
-                self._draw_3d_intro_splash()
-                return
-
-        # 2. Main 3+2 Tile Menu
-        self._draw_3plus2_main_menu()
-
-    def _draw_3plus2_main_menu(self, slide_offset: int = 0, alpha: int = 255, show_top_logo: bool = True):
         self.screen.fill(NORD0)
 
-        # 1. Top Bar / Header with official SN Logo
-        self.draw_top_bar(custom_title="STATION NORTH", subtitle="CYBERDECK MEDIA SUITE • v6.0", show_logo=show_top_logo)
+        # 1. Logo & Header
+        cx = SCREEN_WIDTH // 2
+        cy = 82
+        if self.logo_large:
+            self.screen.blit(self.logo_large, (cx - 100, cy - 58))
 
-        # 2. 3+2 Grid Setup (Balanced for 48px footer and 56px header)
-        card_w = 230
-        card_h = 320
-        gap = 20
+        head_s = self._load_font(28, bold=True).render("STATION NORTH", True, NORD6)
+        self.screen.blit(head_s, (cx - head_s.get_width() // 2, cy + 72))
 
-        right_col_w = 160
-        right_card_h = (card_h - gap) // 2
+        sub_s = self._load_font(15, bold=True).render("SNfetchPLAYER • YOUR TV & RADIO ENGINE", True, NORD8)
+        self.screen.blit(sub_s, (cx - sub_s.get_width() // 2, cy + 108))
 
-        total_w = 3 * card_w + right_col_w + 3 * gap
+        # 2. Modus-Karten (Radio: Cyan, TV: Mint, Chronicles: Gold)
+        card_w = 296
+        card_h = 290
+        gap = 24
+        total_w = 3 * card_w + 2 * gap
         start_x = (SCREEN_WIDTH - total_w) // 2
-        card_y = 78 + slide_offset
+        card_y = cy + 146
 
-        # 5 Target Rectangles: 0=Radio, 1=TV, 2=Chronicles, 3=Settings, 4=Exit
-        target_rects = [
-            pygame.Rect(start_x, card_y, card_w, card_h),
-            pygame.Rect(start_x + (card_w + gap), card_y, card_w, card_h),
-            pygame.Rect(start_x + 2 * (card_w + gap), card_y, card_w, card_h),
-            pygame.Rect(start_x + 3 * (card_w + gap), card_y, right_col_w, right_card_h),
-            pygame.Rect(start_x + 3 * (card_w + gap), card_y + right_card_h + gap, right_col_w, right_card_h),
+        modes = [
+            {"title": "RADIO", "accent": NORD8, "icon_func": self._draw_splash_radio_icon},
+            {"title": "TV", "accent": NORD7, "icon_func": self._draw_splash_tv_icon},
+            {"title": "CHRONICLES", "accent": NORD13, "icon_func": self._draw_splash_chronicles_icon}
         ]
 
-        # Snappy, Responsive Selection Border Interpolation (Lerp with Snap)
-        dest_rect = target_rects[min(max(0, self.splash_cursor), 4)]
-        if self._cursor_fx is None:
-            self._cursor_fx = float(dest_rect.x)
-            self._cursor_fy = float(dest_rect.y)
-            self._cursor_fw = float(dest_rect.width)
-            self._cursor_fh = float(dest_rect.height)
-        else:
-            lerp_speed = 0.55
-            self._cursor_fx += (dest_rect.x - self._cursor_fx) * lerp_speed
-            self._cursor_fy += (dest_rect.y - self._cursor_fy) * lerp_speed
-            self._cursor_fw += (dest_rect.width - self._cursor_fw) * lerp_speed
-            self._cursor_fh += (dest_rect.height - self._cursor_fh) * lerp_speed
-
-            if abs(dest_rect.x - self._cursor_fx) < 1.5: self._cursor_fx = float(dest_rect.x)
-            if abs(dest_rect.y - self._cursor_fy) < 1.5: self._cursor_fy = float(dest_rect.y)
-            if abs(dest_rect.width - self._cursor_fw) < 1.5: self._cursor_fw = float(dest_rect.width)
-            if abs(dest_rect.height - self._cursor_fh) < 1.5: self._cursor_fh = float(dest_rect.height)
-
-        cur_rect = pygame.Rect(int(self._cursor_fx), int(self._cursor_fy), int(self._cursor_fw), int(self._cursor_fh))
-
-        # The 3 Main Cards (Left)
-        cards_left = [
-            {"title": "Radio", "top_col": NORD8, "bot_col": NORD9, "icon": self._draw_splash_radio_icon},
-            {"title": "TV", "top_col": NORD7, "bot_col": NORD14, "icon": self._draw_splash_tv_icon},
-            {"title": "Chronicles", "top_col": NORD13, "bot_col": NORD12, "icon": self._draw_splash_chronicles_icon}
-        ]
-
-        for i, c in enumerate(cards_left):
-            rect = target_rects[i]
+        for i, m in enumerate(modes):
+            x = start_x + i * (card_w + gap)
+            rect = pygame.Rect(x, card_y, card_w, card_h)
             is_sel = (i == self.splash_cursor)
+            accent = m["accent"]
 
-            # Solid deep charcoal base card
-            pygame.draw.rect(self.screen, (20, 24, 32), rect, border_radius=16)
+            # Background & Borders (Each card has its distinct color identity)
+            dim_accent = tuple(int(c * 0.72) for c in accent)
+            border_dim = tuple(int(c * 0.45) for c in accent)
+            bg_col = NORD1 if is_sel else (36, 42, 54)
+            pygame.draw.rect(self.screen, bg_col, rect, border_radius=16)
 
-            # Inset Artwork Square with Nord Aurora gradient
-            pad = 8
-            art_size = card_w - (pad * 2)
-            art_rect = pygame.Rect(rect.x + pad, rect.y + pad, art_size, art_size)
-            self._draw_vertical_gradient(self.screen, art_rect, c["top_col"], c["bot_col"], border_radius=12)
+            if is_sel:
+                # Glowing accent border & highlight
+                pygame.draw.rect(self.screen, accent, rect, width=3, border_radius=16)
+                pygame.draw.rect(self.screen, NORD6, (x - 2, card_y - 2, card_w + 4, card_h + 4), width=1, border_radius=18)
+                # Accent Header Stripe
+                pygame.draw.rect(self.screen, accent, (x + 20, card_y, card_w - 40, 5), border_radius=2)
+            else:
+                pygame.draw.rect(self.screen, border_dim, rect, width=2, border_radius=16)
 
-            # Draw Handcrafted Vector Icon in center of artwork
-            c["icon"](self.screen, rect.x + card_w // 2, rect.y + pad + art_size // 2, (255, 255, 255))
+            # Title in card's color
+            t_col = accent if is_sel else dim_accent
+            mt_surf = self._load_font(28, bold=True).render(m["title"], True, t_col)
+            self.screen.blit(mt_surf, (x + (card_w - mt_surf.get_width()) // 2, card_y + 28))
 
-            # Text in bottom black banner
-            txt_surf = self._load_font(24, bold=True).render(c["title"], True, (255, 255, 255))
-            text_y = rect.y + pad + art_size + (card_h - (pad + art_size) - txt_surf.get_height()) // 2
-            self.screen.blit(txt_surf, (rect.x + (card_w - txt_surf.get_width()) // 2, text_y))
+            # Centered Mode Vector Icon in card's color
+            cx_box = x + card_w // 2
+            cy_box = card_y + 148
+            icon_col = accent if is_sel else dim_accent
+            m["icon_func"](self.screen, cx_box, cy_box, icon_col)
 
-            # Subtle inactive border
-            if not is_sel:
-                pygame.draw.rect(self.screen, (40, 46, 58), rect, width=2, border_radius=16)
+            # Selected Action Prompt
+            if is_sel:
+                act_surf = self._load_font(14, bold=True).render("PRESS [A] TO LAUNCH", True, accent)
+                self.screen.blit(act_surf, (x + (card_w - act_surf.get_width()) // 2, card_y + 248))
 
-        # Card 4: Settings (Top Right, Polar Slate Nord1 to Nord2)
-        rect_set = target_rects[3]
-        is_sel_settings = (self.splash_cursor == 3)
-        pygame.draw.rect(self.screen, (20, 24, 32), rect_set, border_radius=16)
-        pad_r = 6
-        art_set_rect = pygame.Rect(rect_set.x + pad_r, rect_set.y + pad_r, right_col_w - pad_r * 2, right_card_h - pad_r * 2)
-        self._draw_vertical_gradient(self.screen, art_set_rect, NORD1, NORD2, border_radius=12)
-        self._draw_pro_gear_icon(self.screen, rect_set.x + right_col_w // 2, rect_set.y + right_card_h // 2, (255, 255, 255))
-        if not is_sel_settings:
-            pygame.draw.rect(self.screen, (40, 46, 58), rect_set, width=2, border_radius=16)
-
-        # Card 5: Exit (Bottom Right, Aurora Crimson Red Nord11)
-        rect_exit = target_rects[4]
-        is_sel_exit = (self.splash_cursor == 4)
-        pygame.draw.rect(self.screen, (20, 24, 32), rect_exit, border_radius=16)
-        art_exit_rect = pygame.Rect(rect_exit.x + pad_r, rect_exit.y + pad_r, right_col_w - pad_r * 2, right_card_h - pad_r * 2)
-        self._draw_vertical_gradient(self.screen, art_exit_rect, NORD11, (130, 32, 44), border_radius=12)
-        self._draw_pro_exit_icon(self.screen, rect_exit.x + right_col_w // 2, rect_exit.y + right_card_h // 2, (255, 255, 255))
-        if not is_sel_exit:
-            pygame.draw.rect(self.screen, (40, 46, 58), rect_exit, width=2, border_radius=16)
-
-        # Smooth, Punchy Glowing Selection Border around active card (White & Cyan Glow)
-        glow_rect = cur_rect.inflate(8, 8)
-        pygame.draw.rect(self.screen, (136, 192, 208), glow_rect, width=4, border_radius=18)
-        pygame.draw.rect(self.screen, (255, 255, 255), cur_rect.inflate(4, 4), width=2, border_radius=17)
-
-        # 3. Lower Section: Asset Synchronisation & Randomized Aurora Quotes
+        # 3. Live-Asset-Ladebalken & Statusanzeige unten
         j_found, t_found, c_found, total_found, pct = self.get_asset_stats()
-        lower_box_y = card_y + card_h + 18
-        box_w = 910
-        box_h = 286
-        box_x = start_x
-        pygame.draw.rect(self.screen, (34, 39, 49), (box_x, lower_box_y, box_w, box_h), border_radius=16)
-        pygame.draw.rect(self.screen, (46, 52, 64), (box_x, lower_box_y, box_w, box_h), width=2, border_radius=16)
+        bar_w = 720
+        bar_x = (SCREEN_WIDTH - bar_w) // 2
+        bar_y = card_y + card_h + 46
 
         if self.sync_active:
             disp_pct = max(self.sync_pct, pct)
-            hdr_text = f"DOWNLOADING MEDIA ASSETS ({int(disp_pct)}% READY)"
+            hdr_text = f"⚡ SYNCHRONIZING ASSETS ({int(disp_pct)}%) • DOWNLOADING MEDIA..."
             hdr_col = NORD8
-            sub_text = self.sync_status_text if self.sync_status_text else "Downloading media pack from GitHub..."
+            sub_text = self.sync_status_text if self.sync_status_text else "Downloading missing media files from GitHub..."
             sub_col = NORD5
+            hint_text = "💡 Engine is active! You can start Radio / TV now, or press [SELECT] for Settings."
+            hint_col = NORD13
         elif pct >= 99.0:
-            hdr_text = "ALL MEDIA ASSETS SYNCHRONIZED (100% READY)"
+            hdr_text = "✅ ALL STATION MEDIA ASSETS SYNCHRONIZED (100% READY)"
             hdr_col = NORD7
-            sub_text = "174 Station Jingles   •   42 Retro TV Idents (4:3)   •   98 Chronicles Pages"
-            sub_col = NORD5
+            sub_text = f"174 Station Jingles  •  42 TV Idents (480p)  •  98 Chronicles Archive"
+            sub_col = NORD4
+            hint_text = "Press [A] to launch selected mode  •  Press [SELECT] to open Settings & System Handbook"
+            hint_col = NORD3
         else:
-            hdr_text = f"ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
+            hdr_text = f"⚠️ ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
             hdr_col = NORD13
-            sub_text = f"Local Assets: {j_found}/174 Jingles   •   {t_found}/42 TV Idents   •   {c_found}/98 Comics"
-            sub_col = NORD5
+            sub_text = f"Local Assets: {j_found}/174 Jingles  •  {t_found}/42 TV IDs  •  {c_found}/98 Chronicles"
+            sub_col = NORD4
+            hint_text = "Connect to Wi-Fi to sync 480p TV idents & jingles  •  Press [SELECT] for Settings"
+            hint_col = NORD12
 
-        # Header with indicator dot
-        pygame.draw.circle(self.screen, hdr_col, (box_x + 34, lower_box_y + 32), 7)
-        sync_title = self._load_font(21, bold=True).render(hdr_text, True, hdr_col)
-        self.screen.blit(sync_title, (box_x + 50, lower_box_y + 20))
+        # 1. Headline above bar
+        hdr_surf = self._load_font(15, bold=True).render(hdr_text, True, hdr_col)
+        self.screen.blit(hdr_surf, (cx - hdr_surf.get_width() // 2, bar_y - 28))
 
-        # Subtext breakdown (fits cleanly with generous breathing room, no breakout)
-        details_surf = self._load_font(17, bold=True).render(sub_text, True, sub_col)
-        self.screen.blit(details_surf, (box_x + 28, lower_box_y + 52))
+        # 2. Progress Bar Track & Fill
+        pygame.draw.rect(self.screen, NORD1, (bar_x, bar_y, bar_w, 10), border_radius=5)
+        pygame.draw.rect(self.screen, NORD2, (bar_x, bar_y, bar_w, 10), width=1, border_radius=5)
 
-        # Wide Progress Bar
-        bar_w = box_w - 56
-        bar_h = 16
-        bar_x = box_x + 28
-        bar_y = lower_box_y + 82
-        pygame.draw.rect(self.screen, (20, 24, 32), (bar_x, bar_y, bar_w, bar_h), border_radius=8)
         curr_pct = max(self.sync_pct, pct) if self.sync_active else pct
         fill_w = max(6, int(bar_w * (min(100.0, curr_pct) / 100.0)))
         bar_col = NORD8 if self.sync_active else (NORD7 if pct >= 99.0 else NORD13)
-        pygame.draw.rect(self.screen, bar_col, (bar_x, bar_y, fill_w, bar_h), border_radius=8)
+        pygame.draw.rect(self.screen, bar_col, (bar_x, bar_y, fill_w, 10), border_radius=5)
 
-        # 4. Randomized Lore & Quotes from sprueche.json in Aurora Colors (replaces old hint line)
-        self._check_cycle_quote()
-        # Subtle horizontal divider line
-        pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, lower_box_y + 112), (box_x + box_w - 28, lower_box_y + 112), 1)
+        # 3. Subtext below bar (Active file or item stats)
+        sub_surf = self._load_font(13).render(sub_text, True, sub_col)
+        self.screen.blit(sub_surf, (cx - sub_surf.get_width() // 2, bar_y + 16))
 
-        # Broadcast badge
-        badge_surf = self._load_font(14, bold=True).render("✦ THE QUEEN'S FREQUENCY // BROADCAST TRANSMISSION ✦", True, NORD9)
-        self.screen.blit(badge_surf, (box_x + 28, lower_box_y + 122))
-
-        # Word-wrapped Quote Text in Randomized Aurora Color
-        q_font = self._load_font(20, bold=True)
-        max_q_w = box_w - 56
-        quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
-        if len(quote_lines) > 3:
-            q_font = self._load_font(18, bold=True)
-            quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
-
-        line_y = lower_box_y + 148
-        line_h = 28 if q_font.size("A")[1] >= 20 else 24
-        for line in quote_lines[:4]:
-            q_surf = q_font.render(line, True, self.current_quote_color)
-            self.screen.blit(q_surf, (box_x + 28, line_y))
-            line_y += line_h
-
-        # 4. Harmonized Bottom Footer Bar with Pills (NO [B] Exit!)
-        menu_pills = [
-            ("A", "Starten", NORD8),
-            ("D-Pad", "Navigieren", NORD7),
-            ("Sel", "Optionen", NORD9)
-        ]
-        self.draw_bottom_bar(pills=menu_pills, right_text="v6.0 • PortMaster Edition")
+        # 4. Helper prompt at the bottom
+        hint_surf = self._load_font(12, bold=True).render(hint_text, True, hint_col)
+        self.screen.blit(hint_surf, (cx - hint_surf.get_width() // 2, bar_y + 36))
 
     # =========================================================================
     # RENDERER 2: RADIO ZEN VISUALIZER (FULLSCREEN SPECTRUM ANALYZER)
@@ -2681,29 +1946,30 @@ class SNfetchDashboard:
     # =========================================================================
     # RENDERER 3: TOP-BAR (STATUSLEISTE MIT FIXIERTEN SLOTS)
     # =========================================================================
-    def draw_top_bar(self, custom_title: Optional[str] = None, subtitle: Optional[str] = None, show_logo: bool = True):
-        pygame.draw.rect(self.screen, COLOR_BAR_BG, (0, 0, SCREEN_WIDTH, 56))
-        pygame.draw.line(self.screen, (50, 56, 68), (0, 56), (SCREEN_WIDTH, 56), 2)
+    def draw_top_bar(self, custom_title: Optional[str] = None):
+        pygame.draw.rect(self.screen, COLOR_BAR_BG, (0, 0, SCREEN_WIDTH, 54))
+        pygame.draw.line(self.screen, NORD2, (0, 54), (SCREEN_WIDTH, 54), 1)
 
         lx = 20
-        logo_w = self.logo_img.get_width() if self.logo_img else 67
-        if show_logo and self.logo_img:
-            self.screen.blit(self.logo_img, (lx, 7))
-        lx += logo_w + 14
+        if self.logo_img:
+            orig_w, orig_h = self.logo_img.get_size()
+            lh = 30
+            lw = int(lh * (orig_w / orig_h))
+            l_scaled = pygame.transform.smoothscale(self.logo_img, (lw, lh))
+            self.screen.blit(l_scaled, (lx, 12))
+            lx += lw + 14
 
-        title_text = custom_title if custom_title else "STATION NORTH"
-        title_surf = self._load_font(24, bold=True).render(title_text, True, NORD6)
+        title_surf = self._load_font(19, bold=True).render("Station North", True, NORD6)
         self.screen.blit(title_surf, (lx, 7))
 
-        sub_text = subtitle if subtitle else "CYBERDECK MEDIA SUITE • v6.0"
-        sub_surf = self._load_font(15, bold=True).render(sub_text, True, NORD8)
-        self.screen.blit(sub_surf, (lx, 33))
+        sub_surf = self._load_font(12, bold=True).render("SNfetchPLAYER • Your TV & Radio Engine", True, NORD8)
+        self.screen.blit(sub_surf, (lx, 30))
 
         # Statusleiste rechts (WLAN, Batterie & Uhrzeit)
         # 1. WLAN Symbol (Nord8 Cyan wenn aktiv, Nord3 wenn getrennt)
         is_wifi = self.hardware.get_wifi_status()
         wifi_col = NORD8 if is_wifi else NORD3
-        wx, wy = 770, 18
+        wx, wy = 780, 20
         pygame.draw.circle(self.screen, wifi_col, (wx + 10, wy + 16), 2)
         pygame.draw.arc(self.screen, wifi_col, (wx + 5, wy + 9, 10, 10), 0.785, 2.356, 2)
         pygame.draw.arc(self.screen, wifi_col, (wx + 1, wy + 3, 18, 18), 0.785, 2.356, 2)
@@ -2711,27 +1977,27 @@ class SNfetchDashboard:
         # 2. Batterie
         bat_cap, is_charging = self.hardware.get_battery_info()
         bat_color = NORD14 if bat_cap > 20 else NORD11
-        bx, by = 825, 18
-        pygame.draw.rect(self.screen, bat_color, (bx, by, 24, 16), width=2, border_radius=3)
-        pygame.draw.rect(self.screen, bat_color, (bx + 24, by + 4, 3, 8))
+        bx, by = 835, 20
+        pygame.draw.rect(self.screen, bat_color, (bx, by, 22, 14), width=1, border_radius=2)
+        pygame.draw.rect(self.screen, bat_color, (bx + 22, by + 3, 2, 8))
         fill_w = max(2, int(18 * (bat_cap / 100.0)))
-        pygame.draw.rect(self.screen, bat_color, (bx + 3, by + 3, fill_w, 10))
+        pygame.draw.rect(self.screen, bat_color, (bx + 2, by + 2, fill_w, 10))
 
-        charge_symbol = "⚡" if is_charging else ""
-        bat_surf = self._load_font(15, bold=True).render(f"{charge_symbol}{bat_cap}%", True, bat_color)
-        self.screen.blit(bat_surf, (bx + 32, 17))
+        charge_symbol = "⚡ " if is_charging else ""
+        bat_surf = self._load_font(12, bold=True).render(f"{charge_symbol}{bat_cap}%", True, bat_color)
+        self.screen.blit(bat_surf, (bx + 28, 18))
 
         # 3. Uhrzeit
         time_str = self.hardware.get_time_str()
-        time_surf = self._load_font(22, bold=True).render(time_str, True, NORD6)
-        self.screen.blit(time_surf, (932, 14))
+        time_surf = self._load_font(18, bold=True).render(time_str, True, NORD6)
+        self.screen.blit(time_surf, (940, 16))
 
     # =========================================================================
     # RENDERER 3: RADIO MODE (THE QUEEN'S FREQUENCY - 2-CARD STAGE)
     # =========================================================================
     def draw_radio_dashboard(self):
         self.screen.fill(NORD0)
-        self.draw_top_bar(custom_title="STATION NORTH • RADIO", subtitle="THE QUEEN'S FREQUENCY • LIVE STREAM")
+        self.draw_top_bar(custom_title="Station North")
 
         track = self.playlist[self.current_idx] if self.current_idx < len(self.playlist) else {}
         title = track.get("title", "Unknown Title")
@@ -2739,9 +2005,9 @@ class SNfetchDashboard:
 
         # 1. Obere Karte: Visualizer Bühne
         card1_x = 20
-        card1_y = 66
+        card1_y = 62
         card1_w = 984
-        card1_h = 368
+        card1_h = 440
         pygame.draw.rect(self.screen, NORD1, (card1_x, card1_y, card1_w, card1_h), border_radius=16)
         pygame.draw.rect(self.screen, NORD2, (card1_x, card1_y, card1_w, card1_h), width=1, border_radius=16)
 
@@ -2749,69 +2015,60 @@ class SNfetchDashboard:
 
         if self.is_station_drop:
             drop_s = self._load_font(36, bold=True).render("STATION NORTH IDENT", True, NORD8)
-            self.screen.blit(drop_s, (cx - drop_s.get_width() // 2, card1_y + 40))
-            sub_s = self._load_font(20, bold=True).render("LIVE JINGLE BROADCAST", True, NORD13)
-            self.screen.blit(sub_s, (cx - sub_s.get_width() // 2, card1_y + 85))
+            self.screen.blit(drop_s, (cx - drop_s.get_width() // 2, card1_y + 80))
+            sub_s = self._load_font(18, bold=True).render("LIVE JINGLE BROADCAST", True, NORD13)
+            self.screen.blit(sub_s, (cx - sub_s.get_width() // 2, card1_y + 128))
         else:
-            sn_s = self._load_font(54, bold=True).render("SN", True, NORD6)
-            self.screen.blit(sn_s, (cx - sn_s.get_width() // 2, card1_y + 20))
+            sn_s = self._load_font(58, bold=True).render("SN", True, NORD6)
+            self.screen.blit(sn_s, (cx - sn_s.get_width() // 2, card1_y + 44))
 
-            sub_sn = self._load_font(18, bold=True).render("Station North", True, NORD4)
-            self.screen.blit(sub_sn, (cx - sub_sn.get_width() // 2, card1_y + 76))
+            sub_sn = self._load_font(13).render("Station North", True, NORD4)
+            self.screen.blit(sub_sn, (cx - sub_sn.get_width() // 2, card1_y + 104))
 
-            stream_s = self._load_font(22, bold=True).render("SN-RADIO AUDIO STREAM", True, NORD8)
-            self.screen.blit(stream_s, (cx - stream_s.get_width() // 2, card1_y + 106))
+            stream_s = self._load_font(20, bold=True).render("SN-RADIO AUDIO STREAM", True, NORD8)
+            self.screen.blit(stream_s, (cx - stream_s.get_width() // 2, card1_y + 138))
 
         # Vollbreiter organischer Wellen-Visualizer mit bunten Kappen
         vis_x = card1_x + 14
         vis_w = card1_w - 28
-        vis_y = card1_y + 142
-        vis_h = 212
+        vis_y = card1_y + 180
+        vis_h = 246
         self.visualizer.update(is_active=self.is_playing)
         self.visualizer.draw(self.screen, x=vis_x, y=vis_y, width=vis_w, max_h=vis_h)
 
         # 2. Untere Karte: Song-Titel, Artist & 5 Große Chunky Buttons
         card2_x = 20
-        card2_y = 448
+        card2_y = 514
         card2_w = 984
-        card2_h = 260
+        card2_h = 238
         pygame.draw.rect(self.screen, NORD1, (card2_x, card2_y, card2_w, card2_h), border_radius=16)
         pygame.draw.rect(self.screen, NORD2, (card2_x, card2_y, card2_w, card2_h), width=1, border_radius=16)
 
         # Song-Titel zentriert
         disp_title = self.station_drop_title if self.is_station_drop else title
-        title_font = self._load_font(30, bold=True)
-        if len(disp_title) > 34:
-            title_font = self._load_font(24, bold=True)
+        title_font = self._load_font(26, bold=True)
+        if len(disp_title) > 38:
+            title_font = self._load_font(22, bold=True)
         t_surf = title_font.render(disp_title, True, NORD6)
-        self.screen.blit(t_surf, (cx - t_surf.get_width() // 2, card2_y + 14))
+        self.screen.blit(t_surf, (cx - t_surf.get_width() // 2, card2_y + 16))
 
         # Interpret zentriert
         disp_artist = "The Queen's Frequency" if self.is_station_drop else artist
-        a_surf = self._load_font(20, bold=True).render(disp_artist, True, NORD4)
-        self.screen.blit(a_surf, (cx - a_surf.get_width() // 2, card2_y + 50))
+        a_surf = self._load_font(17).render(disp_artist, True, NORD4)
+        self.screen.blit(a_surf, (cx - a_surf.get_width() // 2, card2_y + 48))
 
         # 5 Große Chunky Buttons
         btn_area_x = card2_x + 16
         btn_area_w = card2_w - 32
-        btn_y = card2_y + 90
-        self.draw_5_button_cockpit(self.screen, btn_area_x, btn_y, btn_area_w, height=155)
-
-        # Harmonized Bottom Bar with Pills
-        radio_pills = [
-            ("A", "Play / Pause", NORD8),
-            ("◄/►", "Track", NORD14),
-            ("X", "Zen Vollbild", NORD13),
-            ("B", "Hauptmenü", NORD11)
-        ]
-        self.draw_bottom_bar(pills=radio_pills, right_text="Station North • Radio")
+        btn_y = card2_y + 82
+        self.draw_5_button_cockpit(self.screen, btn_area_x, btn_y, btn_area_w, height=140)
 
     # =========================================================================
     # RENDERER 4: TV MODE (TELEVISION BROADCAST - 2-CARD STAGE)
     # =========================================================================
     def draw_tv_dashboard(self):
         self.screen.fill(NORD0)
-        self.draw_top_bar(custom_title="STATION NORTH • TV", subtitle="TELEVISION BROADCAST • 4:3 CRT MODE")
+        self.draw_top_bar(custom_title="Station North")
 
         track = self.playlist[self.current_idx] if self.current_idx < len(self.playlist) else {}
         title = track.get("title", "Unknown Title")
@@ -2820,9 +2077,9 @@ class SNfetchDashboard:
 
         # 1. Obere Karte: Großes Video-Thumbnail & Fullscreen-Trigger
         card1_x = 20
-        card1_y = 66
+        card1_y = 62
         card1_w = 984
-        card1_h = 368
+        card1_h = 440
         card1_rect = pygame.Rect(card1_x, card1_y, card1_w, card1_h)
 
         pygame.draw.rect(self.screen, NORD1, card1_rect, border_radius=16)
@@ -2844,13 +2101,13 @@ class SNfetchDashboard:
 
         p_sh = p_font.render("PRESS for", True, (15, 18, 24))
         f_sh = f_font.render("FULLSCREEN", True, (15, 18, 24))
-        self.screen.blit(p_sh, (cx - p_sh.get_width() // 2 + 2, card1_y + 112))
-        self.screen.blit(f_sh, (cx - f_sh.get_width() // 2 + 3, card1_y + 162))
+        self.screen.blit(p_sh, (cx - p_sh.get_width() // 2 + 2, card1_y + 142))
+        self.screen.blit(f_sh, (cx - f_sh.get_width() // 2 + 3, card1_y + 192))
 
         p_s = p_font.render("PRESS for", True, NORD6)
         f_s = f_font.render("FULLSCREEN", True, NORD6)
-        self.screen.blit(p_s, (cx - p_s.get_width() // 2, card1_y + 110))
-        self.screen.blit(f_s, (cx - f_s.get_width() // 2, card1_y + 160))
+        self.screen.blit(p_s, (cx - p_s.get_width() // 2, card1_y + 140))
+        self.screen.blit(f_s, (cx - f_s.get_width() // 2, card1_y + 190))
 
         # SN Wasserzeichen unten rechts
         if self.logo_large:
@@ -2858,39 +2115,31 @@ class SNfetchDashboard:
             wm = pygame.transform.smoothscale(self.logo_large, (wm_w, wm_h))
             wm.set_alpha(165)
             self.screen.blit(wm, (card1_x + card1_w - wm_w - 24, card1_y + card1_h - wm_h - 22))
-            wm_txt = self._load_font(15, bold=True).render("Station North", True, (220, 220, 220))
+            wm_txt = self._load_font(12, bold=True).render("Station North", True, (220, 220, 220))
             wm_txt.set_alpha(165)
-            self.screen.blit(wm_txt, (card1_x + card1_w - wm_txt.get_width() - 24, card1_y + card1_h - 22))
+            self.screen.blit(wm_txt, (card1_x + card1_w - wm_txt.get_width() - 24, card1_y + card1_h - 18))
 
         # 2. Untere Karte: Titel, Artist & 5 Große Chunky Buttons
         card2_x = 20
-        card2_y = 448
+        card2_y = 514
         card2_w = 984
-        card2_h = 260
+        card2_h = 238
         pygame.draw.rect(self.screen, NORD1, (card2_x, card2_y, card2_w, card2_h), border_radius=16)
         pygame.draw.rect(self.screen, NORD2, (card2_x, card2_y, card2_w, card2_h), width=1, border_radius=16)
 
-        title_font = self._load_font(30, bold=True)
-        if len(title) > 34:
-            title_font = self._load_font(24, bold=True)
+        title_font = self._load_font(26, bold=True)
+        if len(title) > 38:
+            title_font = self._load_font(22, bold=True)
         t_surf = title_font.render(title, True, NORD6)
-        self.screen.blit(t_surf, (cx - t_surf.get_width() // 2, card2_y + 14))
+        self.screen.blit(t_surf, (cx - t_surf.get_width() // 2, card2_y + 16))
 
-        a_surf = self._load_font(20, bold=True).render(artist, True, NORD4)
-        self.screen.blit(a_surf, (cx - a_surf.get_width() // 2, card2_y + 50))
+        a_surf = self._load_font(17).render(artist, True, NORD4)
+        self.screen.blit(a_surf, (cx - a_surf.get_width() // 2, card2_y + 48))
 
         btn_area_x = card2_x + 16
         btn_area_w = card2_w - 32
-        btn_y = card2_y + 90
-        self.draw_5_button_cockpit(self.screen, btn_area_x, btn_y, btn_area_w, height=155)
-
-        # Harmonized Bottom Bar with Pills
-        tv_pills = [
-            ("A", "Vollbild Starten", NORD8),
-            ("◄/►", "Kanal", NORD14),
-            ("B", "Hauptmenü", NORD11)
-        ]
-        self.draw_bottom_bar(pills=tv_pills, right_text="Station North • Television")
+        btn_y = card2_y + 82
+        self.draw_5_button_cockpit(self.screen, btn_area_x, btn_y, btn_area_w, height=140)
 
     def _trigger_cockpit_action(self, idx: int):
         """Executes the action of the focused button (Android TV navigation model)"""
@@ -2939,12 +2188,12 @@ class SNfetchDashboard:
     # =========================================================================
     def draw_chronicles_screen(self):
         self.screen.fill(NORD0)
-        self.draw_top_bar(custom_title="STATION NORTH • CHRONICLES", subtitle="ILLUSTRATED LORE & NARRATIVE ARCHIVES")
+        self.draw_top_bar(custom_title="THE CHRONICLES")
 
         if not self.chronicles_data:
             msg_s = self.font_hero.render("No Chronicles Data Found (assets/comic)", True, NORD11)
             self.screen.blit(msg_s, ((SCREEN_WIDTH - msg_s.get_width()) // 2, 350))
-            self.draw_bottom_bar(pills=[("B", "Hauptmenü", NORD11)], right_text="Station North • Chronicles")
+            self.draw_bottom_bar(custom_controls="[B] Back to Main Menu")
             return
 
         item = self.chronicles_data[self.chronicles_idx]
@@ -2955,16 +2204,16 @@ class SNfetchDashboard:
 
         col1_x = 40
         col1_w = 440
-        panel_y = 66
-        panel_h = 504
+        panel_y = 68
+        panel_h = 490
         panel_rect = pygame.Rect(col1_x, panel_y, col1_w, panel_h)
-        pygame.draw.rect(self.screen, (0, 0, 0), panel_rect, border_radius=16)
-        pygame.draw.rect(self.screen, (35, 42, 54), panel_rect, width=2, border_radius=16)
+        pygame.draw.rect(self.screen, NORD1, panel_rect, border_radius=16)
+        pygame.draw.rect(self.screen, NORD2, panel_rect, width=1, border_radius=16)
 
         if image_name not in self.chronicles_img_cache:
             img_paths = [
-                APP_DIR / "assets/comic" / image_name,
-                Path("assets/comic") / image_name
+                Path("assets/comic") / image_name,
+                Path("/roms/ports/snfetchplayer/assets/comic") / image_name
             ]
             loaded_surf = None
             for ip in img_paths:
@@ -2991,36 +2240,35 @@ class SNfetchDashboard:
             self.screen.blit(surf, (px, py))
 
         # Audio Box direkt unter dem Comic-Panel
-        abox_y = panel_y + panel_h + 14
-        abox_h = 124
+        abox_y = panel_y + panel_h + 16
+        abox_h = 88
         abox_rect = pygame.Rect(col1_x, abox_y, col1_w, abox_h)
         pygame.draw.rect(self.screen, NORD1, abox_rect, border_radius=12)
         pygame.draw.rect(self.screen, NORD8 if self.chronicles_playing else NORD2, abox_rect, width=2 if self.chronicles_playing else 1, border_radius=12)
 
         astat_text = "❚❚ NARRATION PLAYING" if self.chronicles_playing else "▶ READ ALOUD [A] / [Start]"
         astat_col = NORD14 if self.chronicles_playing else NORD8
-        astat_s = self._load_font(20, bold=True).render(astat_text, True, astat_col)
-        self.screen.blit(astat_s, (col1_x + 20, abox_y + 18))
+        astat_s = self._load_font(16, bold=True).render(astat_text, True, astat_col)
+        self.screen.blit(astat_s, (col1_x + 18, abox_y + 16))
 
         audio_name = f"Voice Audio #{panel_id:03d} • Queen Faith"
-        aname_s = self._load_font(17, bold=True).render(audio_name, True, NORD4)
-        self.screen.blit(aname_s, (col1_x + 20, abox_y + 58))
+        aname_s = self._load_font(14).render(audio_name, True, NORD4)
+        self.screen.blit(aname_s, (col1_x + 18, abox_y + 48))
 
         # Rechte Spalte: Fließtext
         col2_x = 504
         col2_w = 480
-        col2_y = 66
-        col2_h = 642
+        col2_y = 68
+        col2_h = 594
 
         tbox_rect = pygame.Rect(col2_x, col2_y, col2_w, col2_h)
         pygame.draw.rect(self.screen, NORD1, tbox_rect, border_radius=16)
         pygame.draw.rect(self.screen, NORD2, tbox_rect, width=1, border_radius=16)
 
-        c_badge = self._load_font(19, bold=True).render(f"{chapter_name} • Panel {panel_id}/{len(self.chronicles_data)}", True, NORD13)
-        self.screen.blit(c_badge, (col2_x + 24, col2_y + 18))
-        pygame.draw.line(self.screen, NORD2, (col2_x + 20, col2_y + 48), (col2_x + col2_w - 20, col2_y + 48), 1)
+        c_badge = self._load_font(15, bold=True).render(f"{chapter_name} • Panel {panel_id}/{len(self.chronicles_data)}", True, NORD13)
+        self.screen.blit(c_badge, (col2_x + 24, col2_y + 22))
 
-        # Word wrap text with elevated 21px bold font for crystal clarity
+        # Word wrap text
         words = text_content.split()
         lines = []
         cur_line = []
@@ -3034,30 +2282,25 @@ class SNfetchDashboard:
         if cur_line:
             lines.append(" ".join(cur_line))
 
-        ty = col2_y + 64
-        for l in lines[:17]:
+        ty = col2_y + 68
+        for l in lines[:16]:
             lsurf = self.font_body.render(l, True, NORD6)
             self.screen.blit(lsurf, (col2_x + 24, ty))
-            ty += 34
+            ty += 28
 
-        chronicles_pills = [
-            ("◄/►", "Panel Blättern", NORD8),
-            ("A", "Vorlesen", NORD14),
-            ("B", "Hauptmenü", NORD11)
-        ]
-        self.draw_bottom_bar(pills=chronicles_pills, right_text="Station North • Chronicles")
+        self.draw_bottom_bar(custom_controls="[◄/►] Page / Panel   [A/Start] Read Aloud   [B] Main Menu")
 
     # =========================================================================
     # RENDERER 6: SETTINGS SCREEN
     # =========================================================================
     def draw_settings_screen(self):
         self.screen.fill(NORD0)
-        self.draw_top_bar(custom_title="STATION NORTH • EINSTELLUNGEN", subtitle="STORAGE & SYSTEM CONFIGURATION")
+        self.draw_top_bar(custom_title="SETTINGS & ASSET MANAGEMENT")
 
         # Queen Directives Header Quote (Groesser & Deutlicher)
-        q_header = "\"A well-maintained machine rules without interruption. Manage storage & updates.\" — Queen Directives"
-        qh_s = self._load_font(17, bold=True).render(q_header, True, NORD13)
-        self.screen.blit(qh_s, ((SCREEN_WIDTH - qh_s.get_width()) // 2, 62))
+        q_header = "\"A well-maintained machine rules without interruption. Manage storage & updates.\" — Her Majesty Queen Directives"
+        qh_s = self._load_font(14, bold=True).render(q_header, True, NORD13)
+        self.screen.blit(qh_s, ((SCREEN_WIDTH - qh_s.get_width()) // 2, 60))
 
         # --- LINKE SPALTE: EINSTELLUNGEN & REGLER (x=30, w=480) ---
         settings_items = [
@@ -3071,8 +2314,8 @@ class SNfetchDashboard:
             ("📖 Open System Handbook", "Press [A] or [►] to Jump to Right Column")
         ]
 
-        start_y = 88
-        row_h = 60
+        start_y = 82
+        row_h = 58
         box_w = 480
 
         for i, (label, val) in enumerate(settings_items):
@@ -3092,54 +2335,54 @@ class SNfetchDashboard:
             pygame.draw.rect(self.screen, b_col, r_rect, width=2 if is_sel else 1, border_radius=12)
 
             l_col = NORD8 if is_sel else NORD6
-            l_surf = self._load_font(20, bold=True).render(label, True, l_col)
+            l_surf = self._load_font(17, bold=True).render(label, True, l_col)
             self.screen.blit(l_surf, (r_rect.x + 20, ry + 8))
 
             val_col = NORD7 if i == 7 else (NORD14 if "ENABLED" in val or "%" in val else NORD13)
-            val_surf = self._load_font(18, bold=True).render(val, True, val_col)
+            val_surf = self._load_font(14, bold=True).render(val, True, val_col)
             self.screen.blit(val_surf, (r_rect.x + 20, ry + 32))
 
             if is_sel:
                 pygame.draw.rect(self.screen, NORD7 if i == 7 else NORD8, (34, ry + 6, 6, row_h - 12), border_radius=3)
 
         if self.settings_feedback_msg and (time.time() - self.settings_feedback_time < 3.0):
-            fb_s = self._load_font(18, bold=True).render(self.settings_feedback_msg, True, NORD14)
+            fb_s = self._load_font(14, bold=True).render(self.settings_feedback_msg, True, NORD14)
             self.screen.blit(fb_s, (30 + (box_w - fb_s.get_width()) // 2, start_y + len(settings_items) * (row_h + 8) + 4))
 
         # --- RECHTE SPALTE: HANDBUCH, TV-STEUERUNG & CURATOR GUIDE (x=530, w=464) ---
         guide_x = 530
-        guide_y = 88
+        guide_y = 82
         guide_w = 464
-        guide_h = 620
+        guide_h = 612
         guide_rect = pygame.Rect(guide_x, guide_y, guide_w, guide_h)
 
         is_guide_focused = (self.settings_column == 1)
         pygame.draw.rect(self.screen, NORD1, guide_rect, border_radius=16)
         pygame.draw.rect(self.screen, NORD8 if is_guide_focused else NORD2, guide_rect, width=2 if is_guide_focused else 1, border_radius=16)
 
-        # Card Header (Spacious layout, no text collision)
-        gh_s = self._load_font(22, bold=True).render("SYSTEM HANDBOOK", True, NORD8)
+        # Card Header
+        gh_s = self._load_font(19, bold=True).render("STATION NORTH HANDBOOK", True, NORD8)
         self.screen.blit(gh_s, (guide_x + 20, guide_y + 14))
 
-        hint_text = "[▲/▼] Scrollen • [◄/B] Zurück" if is_guide_focused else "[A] Öffnen"
+        hint_text = "[▲/▼] Scroll • [◄/B] Return" if is_guide_focused else "[A] or [►] on #8 to Focus"
         hint_col = NORD14 if is_guide_focused else NORD4
-        hint_s = self._load_font(15, bold=True).render(hint_text, True, hint_col)
+        hint_s = self._load_font(13, bold=True).render(hint_text, True, hint_col)
         self.screen.blit(hint_s, (guide_x + guide_w - hint_s.get_width() - 20, guide_y + 18))
 
         pygame.draw.line(self.screen, NORD2, (guide_x + 18, guide_y + 44), (guide_x + guide_w - 18, guide_y + 44), 1)
 
         # Scrollbare Inhaltsoberflaeche fuer groessere, perfekt lesbare Schrift
         content_w = guide_w - 36
-        content_h = 920
+        content_h = 800
         content_surf = pygame.Surface((content_w, content_h), pygame.SRCALPHA)
         content_surf.fill((0, 0, 0, 0))
 
         gy = 4
 
         # Section 1: TV Player Controls (4 Funktionen)
-        t_sec = self._load_font(20, bold=True).render("📺 TV CONTROLS (4 DEDICATED KEYS):", True, NORD7)
+        t_sec = self._load_font(17, bold=True).render("📺 TV CONTROLS (4 DEDICATED KEYS):", True, NORD7)
         content_surf.blit(t_sec, (4, gy))
-        gy += 30
+        gy += 28
 
         ctrl_lines = [
             ("START", "Play / Pause Video (Toggle)"),
@@ -3148,20 +2391,20 @@ class SNfetchDashboard:
             ("X / Y", "Single-Track Repeat Loop (Repeat One)")
         ]
         for key_btn, key_desc in ctrl_lines:
-            kb_s = self._load_font(18, bold=True).render(f"[{key_btn}]", True, NORD13)
-            kd_s = self._load_font(18).render(key_desc, True, NORD6)
+            kb_s = self._load_font(15, bold=True).render(f"[{key_btn}]", True, NORD13)
+            kd_s = self._load_font(15).render(key_desc, True, NORD6)
             content_surf.blit(kb_s, (8, gy))
-            content_surf.blit(kd_s, (96, gy))
-            gy += 28
+            content_surf.blit(kd_s, (88, gy))
+            gy += 26
 
         gy += 14
         pygame.draw.line(content_surf, NORD2, (4, gy), (content_w - 4, gy), 1)
         gy += 14
 
         # Section 2: Eigene Playlists & Medien
-        m_sec = self._load_font(20, bold=True).render("📁 CUSTOM MEDIA & PLAYLISTS:", True, NORD12)
+        m_sec = self._load_font(17, bold=True).render("📁 CUSTOM MEDIA & PLAYLISTS:", True, NORD12)
         content_surf.blit(m_sec, (4, gy))
-        gy += 30
+        gy += 28
 
         msg1 = [
             "Drop your own music, videos & custom playlists directly",
@@ -3170,39 +2413,38 @@ class SNfetchDashboard:
             "and local high-fidelity MP3 and FLAC audio files."
         ]
         for line in msg1:
-            ls = self._load_font(18).render(line, True, NORD4)
+            ls = self._load_font(15).render(line, True, NORD4)
             content_surf.blit(ls, (8, gy))
-            gy += 26
+            gy += 24
 
         gy += 14
         pygame.draw.line(content_surf, NORD2, (4, gy), (content_w - 4, gy), 1)
         gy += 14
 
-        # Section 3: Native Android APK & Curator
-        c_sec = self._load_font(20, bold=True).render("📱 NATIVE ANDROID APK & CURATOR:", True, NORD14)
+        # Section 3: Android App & Curator
+        c_sec = self._load_font(17, bold=True).render("📱 ANDROID VERSION & CURATOR:", True, NORD14)
         content_surf.blit(c_sec, (4, gy))
-        gy += 30
+        gy += 28
 
         msg2 = [
-            "For Android handhelds (Retroid Pocket, Odin, RG556)",
-            "or phones, SNfetchPLAYER is also available as an APK!",
-            "👉 github.com/StationNorthMedia/SNfetchPLAYER",
-            "Includes touch & gamepad controls plus the Curator",
-            "Console to build and export playlists for your handheld."
+            "The Station North Android App features a built-in CURATOR!",
+            "Easily curate and build your playlists on your smartphone,",
+            "then export them as JSON to synchronize directly",
+            "with your dArkOS / PortMaster gaming handheld."
         ]
         for line in msg2:
-            ls = self._load_font(18).render(line, True, NORD4)
+            ls = self._load_font(15).render(line, True, NORD4)
             content_surf.blit(ls, (8, gy))
-            gy += 26
+            gy += 24
 
         gy += 14
         pygame.draw.line(content_surf, NORD2, (4, gy), (content_w - 4, gy), 1)
         gy += 14
 
         # Section 4: Radio Vollbild OSD
-        r_sec = self._load_font(20, bold=True).render("📻 RADIO FULLSCREEN COCKPIT (OSD):", True, NORD8)
+        r_sec = self._load_font(17, bold=True).render("📻 RADIO FULLSCREEN COCKPIT (OSD):", True, NORD8)
         content_surf.blit(r_sec, (4, gy))
-        gy += 30
+        gy += 28
 
         msg3 = [
             "Press [X] to launch the fullscreen visualizer.",
@@ -3210,15 +2452,16 @@ class SNfetchDashboard:
             "Press any key to wake the menu • [B] exits fullscreen."
         ]
         for line in msg3:
-            ls = self._load_font(18).render(line, True, NORD4)
+            ls = self._load_font(15).render(line, True, NORD4)
             content_surf.blit(ls, (8, gy))
-            gy += 26
+            gy += 24
 
+        # Content auf den Bildschirm clippen
         clip_h = guide_h - 60
         self.settings_guide_max_scroll = max(0, content_h - clip_h + 20)
         self.screen.blit(content_surf, (guide_x + 16, guide_y + 48), area=pygame.Rect(0, self.settings_guide_scroll_y, content_w, clip_h))
 
-        # Vertikaler Scrollbalken
+        # Vertikaler Scrollbalken auf der rechten Seite der Handbook-Karte
         track_h = clip_h - 16
         pygame.draw.rect(self.screen, (46, 52, 64), (guide_x + guide_w - 12, guide_y + 54, 4, track_h), border_radius=2)
         if self.settings_guide_max_scroll > 0:
@@ -3229,47 +2472,23 @@ class SNfetchDashboard:
             thumb_col = NORD8 if is_guide_focused else NORD2
             pygame.draw.rect(self.screen, thumb_col, (guide_x + guide_w - 13, thumb_y, 6, thumb_h), border_radius=3)
 
-        if self.settings_column == 1:
-            settings_pills = [
-                ("▲/▼", "Scrollen", NORD8),
-                ("◄/B", "Zurück", NORD11)
-            ]
-        else:
-            settings_pills = [
-                ("▲/▼", "Navigieren", NORD8),
-                ("◄/►", "Ändern", NORD14),
-                ("A", "Handbuch", NORD13),
-                ("B", "Hauptmenü", NORD11)
-            ]
-        self.draw_bottom_bar(pills=settings_pills, right_text="Station North • System")
+        ctrl_text = "[▲/▼] Scroll Handbook   [◄/B] Return to Settings" if is_guide_focused else "[▲/▼] Navigate   [◄/►] Adjust   [A/►] Open Handbook   [Select/B] Close"
+        self.draw_bottom_bar(custom_controls=ctrl_text)
 
     # =========================================================================
-    # RENDERER 7: BOTTOM BAR (UNIFIED PILL BADGE FOOTER)
+    # RENDERER 7: BOTTOM BAR
     # =========================================================================
-    def draw_bottom_bar(self, pills: Optional[List[Tuple[str, str, Tuple[int, int, int]]]] = None, custom_controls: Optional[str] = None, right_text: str = "v6.0 • PortMaster Edition"):
-        by = SCREEN_HEIGHT - 48
-        pygame.draw.rect(self.screen, (28, 33, 42), (0, by, SCREEN_WIDTH, 48))
-        pygame.draw.line(self.screen, (46, 52, 64), (0, by), (SCREEN_WIDTH, by), 2)
+    def draw_bottom_bar(self, custom_controls: Optional[str] = None):
+        by = SCREEN_HEIGHT - 52
+        pygame.draw.rect(self.screen, COLOR_BAR_BG, (0, by, SCREEN_WIDTH, 52))
+        pygame.draw.line(self.screen, NORD2, (0, by), (SCREEN_WIDTH, by), 1)
 
-        cur_x = 24
-        if pills:
-            for key, text, col_bg in pills:
-                k_txt = self._load_font(15, bold=True).render(key, True, (20, 24, 30))
-                kw = max(28, k_txt.get_width() + 14)
-                kh = 26
-                ky = by + (48 - kh) // 2
-                pygame.draw.rect(self.screen, col_bg, (cur_x, ky, kw, kh), border_radius=13)
-                self.screen.blit(k_txt, (cur_x + (kw - k_txt.get_width()) // 2, ky + (kh - k_txt.get_height()) // 2))
+        controls = custom_controls or "[◄/►] Track Skip   [Start] Pause   [X] Fullscreen   [Y] Repeat   [Select] Settings   [B] Back"
+        ctrl_surf = self.font_small.render(controls, True, NORD6)
+        self.screen.blit(ctrl_surf, (24, by + 16))
 
-                lbl = self._load_font(17, bold=True).render(text, True, NORD6)
-                self.screen.blit(lbl, (cur_x + kw + 8, ky + (kh - lbl.get_height()) // 2))
-                cur_x += kw + 8 + lbl.get_width() + 22
-        elif custom_controls:
-            ctrl_surf = self._load_font(17, bold=True).render(custom_controls, True, NORD6)
-            self.screen.blit(ctrl_surf, (24, by + (48 - ctrl_surf.get_height()) // 2))
-
-        ver_surf = self._load_font(16, bold=True).render(right_text, True, NORD4)
-        self.screen.blit(ver_surf, (SCREEN_WIDTH - 24 - ver_surf.get_width(), by + (48 - ver_surf.get_height()) // 2))
+        ver_surf = self.font_small.render("Station North • dArkOS Edition v5.0", True, NORD4)
+        self.screen.blit(ver_surf, (SCREEN_WIDTH - 24 - ver_surf.get_width(), by + 16))
 
     # =========================================================================
     # UNIFIED INPUT DISPATCHER (KEYBOARD & GAMEPAD)
@@ -3298,39 +2517,12 @@ class SNfetchDashboard:
             pygame.event.clear()
             return True
 
-        # --- SPLASH SCREEN (3+2 TILE MATRIX & 3D INTRO) ---
+        # --- SPLASH SCREEN ---
         if self.state == STATE_SPLASH:
-            if self.intro_active:
-                # Any button skips intro directly into the menu
-                self.intro_active = False
-                self.intro_transitioning = False
-                self._state_transition_time = now
-                return True
-
-            if key == pygame.K_LEFT:
-                if self.splash_cursor == 0:
-                    self.splash_cursor = 3
-                elif self.splash_cursor in (1, 2):
-                    self.splash_cursor -= 1
-                elif self.splash_cursor in (3, 4):
-                    self.splash_cursor = 2
-            elif key == pygame.K_RIGHT:
-                if self.splash_cursor in (0, 1):
-                    self.splash_cursor += 1
-                elif self.splash_cursor == 2:
-                    self.splash_cursor = 3
-                elif self.splash_cursor in (3, 4):
-                    self.splash_cursor = 0
-            elif key == pygame.K_UP:
-                if self.splash_cursor == 4:
-                    self.splash_cursor = 3
-                elif self.splash_cursor == 3:
-                    self.splash_cursor = 4
-            elif key == pygame.K_DOWN:
-                if self.splash_cursor == 3:
-                    self.splash_cursor = 4
-                elif self.splash_cursor == 4:
-                    self.splash_cursor = 3
+            if key in (pygame.K_LEFT, pygame.K_UP):
+                self.splash_cursor = (self.splash_cursor - 1) % 3
+            elif key in (pygame.K_RIGHT, pygame.K_DOWN):
+                self.splash_cursor = (self.splash_cursor + 1) % 3
             elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_p, pygame.K_a):
                 if self.splash_cursor == 0:
                     self.show_loading_screen("RADIO MODE", "Loading Station North Radio...")
@@ -3355,19 +2547,9 @@ class SNfetchDashboard:
                     self._state_transition_time = time.time()
                     pygame.event.clear()
                     return True
-                elif self.splash_cursor == 3:
-                    self.previous_state = self.state
-                    self.state = STATE_SETTINGS
-                    self._state_transition_time = time.time()
-                    pygame.event.clear()
-                    return True
-                elif self.splash_cursor == 4:
-                    # Clean Exit back to EmulationStation
-                    return False
             elif key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE, pygame.K_b):
-                # In Main Menu, [B] must NEVER exit the application.
-                # Exiting is reserved exclusively for selecting the dedicated Exit card (#4) via [A].
-                return True
+                if time.time() - self.splash_enter_time > 0.8:
+                    return False
             return True
 
         # --- RADIO MODE (ANDROID TV D-PAD FOCUS CURSOR) ---
@@ -3549,17 +2731,7 @@ class SNfetchDashboard:
                 self.trigger_play_track_async(self.current_idx)
 
             # Auto-Advance in Chronicles
-            chronicles_finished = False
-            if self.state == STATE_CHRONICLES and self.chronicles_playing:
-                try:
-                    if pygame.mixer.get_init() and not pygame.mixer.music.get_busy() and not self.chronicles_proc:
-                        chronicles_finished = True
-                except Exception:
-                    pass
-                if self.chronicles_proc and self.chronicles_proc.poll() is not None:
-                    chronicles_finished = True
-
-            if chronicles_finished:
+            if self.state == STATE_CHRONICLES and self.chronicles_proc and self.chronicles_proc.poll() is not None:
                 self.chronicles_proc = None
                 self.chronicles_playing = False
                 if self.chronicles_idx < len(self.chronicles_data) - 1:
