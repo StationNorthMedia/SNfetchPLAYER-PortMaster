@@ -1680,9 +1680,7 @@ class SNfetchDashboard:
                 tv_id_path = self.station_mgr.get_next_tv_id()
                 if tv_id_path and tv_id_path.exists():
                     self.station_mgr.reset_counter()
-                    completed = self._play_tv_station_id_fullscreen(tv_id_path)
-                    if not completed:
-                        break
+                    self._play_tv_station_id_fullscreen(tv_id_path)
                     if not pygame.display.get_init():
                         pygame.display.init()
                         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
