@@ -661,12 +661,6 @@ class SNfetchDashboard:
         self.state = STATE_SPLASH
         self.previous_state = STATE_RADIO
 
-        try:
-            if not pygame.mixer.get_init():
-                pygame.mixer.init()
-        except Exception as e:
-            logging.warning(f"Could not init pygame.mixer: {e}")
-
         self.audio_sink_args = self._detect_ffmpeg_audio_sink()
 
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
@@ -1998,11 +1992,6 @@ class SNfetchDashboard:
     # --- CHRONICLES AUDIO (FAITH NARRATION) ---
     def stop_chronicles_audio(self):
         with self._audio_lock:
-            try:
-                if pygame.mixer.get_init():
-                    pygame.mixer.music.stop()
-            except Exception:
-                pass
             proc = self.chronicles_proc
             self.chronicles_proc = None
             self.chronicles_playing = False
@@ -2039,33 +2028,18 @@ class SNfetchDashboard:
 
         if target_path:
             self.stop_chronicles_audio()
-            played = False
-            # 1. Native Pygame Mixer (Internal, no external binary dependency, zero crash risk)
             try:
-                if not pygame.mixer.get_init():
-                    pygame.mixer.init()
-                pygame.mixer.music.load(str(target_path))
-                pygame.mixer.music.play()
-                self.chronicles_playing = True
-                played = True
-                logging.info(f"Playing Chronicles narration via pygame.mixer: {target_path}")
-            except Exception as mix_err:
-                logging.warning(f"pygame.mixer narration error: {mix_err}")
-
-            # 2. Subprocess fallback if mixer is unavailable
-            if not played:
-                try:
-                    player = "ffplay" if shutil.which("ffplay") else ("aplay" if shutil.which("aplay") else None)
-                    if player == "ffplay":
-                        cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(target_path)]
-                        self.chronicles_proc = subprocess.Popen(cmd)
-                        self.chronicles_playing = True
-                    elif player == "aplay":
-                        cmd = ["aplay", "-q", str(target_path)]
-                        self.chronicles_proc = subprocess.Popen(cmd)
-                        self.chronicles_playing = True
-                except Exception as sub_err:
-                    logging.error(f"Narration subprocess error: {sub_err}")
+                player = "ffplay" if shutil.which("ffplay") else ("aplay" if shutil.which("aplay") else None)
+                if player == "ffplay":
+                    cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(target_path)]
+                    self.chronicles_proc = subprocess.Popen(cmd)
+                    self.chronicles_playing = True
+                elif player == "aplay":
+                    cmd = ["aplay", "-q", str(target_path)]
+                    self.chronicles_proc = subprocess.Popen(cmd)
+                    self.chronicles_playing = True
+            except Exception as sub_err:
+                logging.error(f"Narration subprocess error: {sub_err}")
         else:
             logging.warning(f"Voiceover audio file '{audio_name}' not found. Please sync media assets in Settings.")
 
@@ -3590,17 +3564,7 @@ class SNfetchDashboard:
                 self.trigger_play_track_async(self.current_idx)
 
             # Auto-Advance in Chronicles
-            chronicles_finished = False
-            if self.state == STATE_CHRONICLES and self.chronicles_playing:
-                try:
-                    if pygame.mixer.get_init() and not pygame.mixer.music.get_busy() and not self.chronicles_proc:
-                        chronicles_finished = True
-                except Exception:
-                    pass
-                if self.chronicles_proc and self.chronicles_proc.poll() is not None:
-                    chronicles_finished = True
-
-            if chronicles_finished:
+            if self.state == STATE_CHRONICLES and self.chronicles_playing and self.chronicles_proc and self.chronicles_proc.poll() is not None:
                 self.chronicles_proc = None
                 self.chronicles_playing = False
                 if self.chronicles_idx < len(self.chronicles_data) - 1:
