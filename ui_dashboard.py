@@ -763,6 +763,12 @@ class SNfetchDashboard:
         self.sync_status_text = ""
         self.sync_error = ""
         self.sync_thread: Optional[threading.Thread] = None
+        self.sync_completed_timestamp = 0.0
+
+        # Crate Digging & Pre-Fetching Engine
+        self._prefetched_cache: Dict[str, Tuple[str, float]] = {}
+        self._crate_stripe_surf: Optional[pygame.Surface] = None
+        self._cached_label_logo: Optional[pygame.Surface] = None
 
         self.splash_enter_time = time.time()
 
@@ -771,6 +777,11 @@ class SNfetchDashboard:
 
         # Start asset sync check in background
         self._start_background_asset_sync()
+
+        # Check initial assets: if 100% complete, show prominent 5s celebration on startup before auto-dismissing
+        _, _, _, _, init_pct = self.get_asset_stats()
+        if init_pct >= 99.0:
+            self.sync_completed_timestamp = time.time()
 
     def _detect_ffmpeg_audio_sink(self) -> List[str]:
         # Native direct ALSA audio output for dArkOS & ArkOS (RK3326)
@@ -1042,9 +1053,16 @@ class SNfetchDashboard:
     def get_asset_stats(self) -> Tuple[int, int, int, int, float]:
         j_count = len(self.station_mgr.jingles)
         t_count = len(self.station_mgr.tv_ids)
-        c_count = len(self.chronicles_data)
+        c_count = 0
+        comic_dirs = [APP_DIR / "assets" / "comic", Path("assets/comic")]
+        for cd in comic_dirs:
+            if cd.exists():
+                files = [f for f in cd.rglob("*.*") if f.suffix.lower() in {".webp", ".png", ".jpg", ".mp3", ".json"} and f.stat().st_size > 0]
+                if files:
+                    c_count = len(files)
+                    break
         total = j_count + t_count + c_count
-        expected = 174 + 42 + 98
+        expected = 174 + 42 + 131  # 347 total media assets (174 Jingles + 42 TV Idents + 131 Chronicles Pages & Audio)
         pct = min(100.0, (total / expected) * 100.0) if expected > 0 else 0.0
         return j_count, t_count, c_count, total, pct
 
@@ -1153,6 +1171,8 @@ class SNfetchDashboard:
                 self.sync_status_text = "All Station Assets Synchronized • 100% Ready"
                 self.station_mgr._scan_station_assets()
                 self._load_chronicles()
+                if self.sync_completed_timestamp == 0.0:
+                    self.sync_completed_timestamp = time.time()
                 return
 
             self.sync_active = True
@@ -1259,6 +1279,7 @@ class SNfetchDashboard:
                         self.sync_active = False
                         self.sync_pct = 100.0
                         self.sync_status_text = "All Station Assets Synchronized • 100% Ready"
+                        self.sync_completed_timestamp = time.time()
                         return
                     tasks = remaining
                     total_needed = len(tasks)
@@ -1318,11 +1339,218 @@ class SNfetchDashboard:
             self.sync_active = False
             self.sync_pct = 100.0
             self.sync_status_text = "All Station Assets Synchronized • 100% Ready"
+            self.sync_completed_timestamp = time.time()
             self.station_mgr._scan_station_assets()
             self._load_chronicles()
         except Exception as e:
             self.sync_active = False
             self.sync_error = str(e)
+
+    # =========================================================================
+    # CRATE-DIGGING VINYL STREAM RESOLVER & PRE-FETCH ENGINE (1:1 NORD CRATE)
+    # =========================================================================
+    def _draw_crate_stripes(self, surface: pygame.Surface, w: int, h: int, offset_x: float, col: Tuple[int, int, int], bars: List[Tuple[float, float]]):
+        total_w = w * 1.8
+        start_x = -w * 0.4 + offset_x
+        for b_start, b_end in bars:
+            left = int(start_x + b_start * total_w)
+            right = int(start_x + b_end * total_w)
+            bar_w = right - left
+            if bar_w > 0:
+                pygame.draw.rect(surface, col, (left, 0, bar_w, h))
+
+    def _render_crate_digging_frame(self, title: str, subtitle: str, elapsed: float):
+        w = SCREEN_WIDTH
+        h = SCREEN_HEIGHT
+        cx = w // 2
+        cy = h // 2 - 32
+
+        # 1. Base Dark Background (Nord0 #2E3440)
+        self.screen.fill(NORD0)
+
+        # 2. 3 Parallax Vertical Stripe Layers (Crate-Digging Look with Additive Glow)
+        if not hasattr(self, "_crate_stripe_surf") or self._crate_stripe_surf is None or self._crate_stripe_surf.get_size() != (w, h):
+            self._crate_stripe_surf = pygame.Surface((w, h))
+
+        self._crate_stripe_surf.fill((0, 0, 0))
+
+        # Layer 1: Nord Cyan (136, 192, 208) scaled for additive glow (~40%)
+        col1 = (52, 74, 80)
+        offset1 = (math.sin(elapsed * 1.5) * 0.5 + 0.5) * (w * 0.28)
+        self._draw_crate_stripes(self._crate_stripe_surf, w, h, offset1, col1, [(0.0, 0.40), (0.50, 0.90)])
+
+        # Layer 2: Nord Teal (143, 188, 187) scaled for additive glow (~35%)
+        col2 = (44, 58, 58)
+        offset2 = (math.sin(elapsed * 1.1 + 1.2) * 0.5 + 0.5) * (w * 0.32) - (w * 0.12)
+        self._draw_crate_stripes(self._crate_stripe_surf, w, h, offset2, col2, [(0.0, 0.25), (0.35, 0.65), (0.75, 1.0)])
+
+        # Layer 3: Nord Soft Blue (129, 161, 193) scaled for additive glow (~30%)
+        col3 = (34, 44, 52)
+        offset3 = (math.sin(elapsed * 0.8 + 2.4) * 0.5 + 0.5) * (w * 0.24) - (w * 0.08)
+        self._draw_crate_stripes(self._crate_stripe_surf, w, h, offset3, col3, [(0.0, 0.30), (0.40, 0.80), (0.90, 1.0)])
+
+        # Blit stripes with BLEND_ADD to achieve true luminous PorterDuff SCREEN / Neon glow!
+        self.screen.blit(self._crate_stripe_surf, (0, 0), special_flags=pygame.BLEND_ADD)
+
+        # 3. Rotating Vinyl Record Badge in Center
+        vinyl_radius = int(min(w, h) * 0.21)
+        rotation_angle = (elapsed * 90.0) % 360.0
+
+        # Vinyl Disc Body (Nord1 #3B4252)
+        pygame.draw.circle(self.screen, NORD1, (cx, cy), vinyl_radius)
+
+        # Concentric Grooves (Nord2 #434C5E)
+        for r_factor in (0.86, 0.72, 0.58):
+            pygame.draw.circle(self.screen, NORD2, (cx, cy), int(vinyl_radius * r_factor), width=2)
+
+        # Center Vinyl Label (Nord8 Cyan #88C0D0)
+        center_label_radius = int(vinyl_radius * 0.40)
+        pygame.draw.circle(self.screen, NORD8, (cx, cy), center_label_radius)
+
+        # Center Logo inside label (rotated with 90°/s)
+        if self.logo_large:
+            img_w = int(center_label_radius * 1.35)
+            img_h = int(img_w * (self.logo_large.get_height() / self.logo_large.get_width()))
+            if not hasattr(self, "_cached_label_logo") or self._cached_label_logo is None or self._cached_label_logo.get_size() != (img_w, img_h):
+                self._cached_label_logo = pygame.transform.smoothscale(self.logo_large, (img_w, img_h))
+
+            rot_logo = pygame.transform.rotate(self._cached_label_logo, -rotation_angle)
+            rot_rect = rot_logo.get_rect(center=(cx, cy))
+            self.screen.blit(rot_logo, rot_rect)
+
+        # Center Spindle Hole
+        pygame.draw.circle(self.screen, (24, 28, 36), (cx, cy), 7)
+        pygame.draw.circle(self.screen, NORD3, (cx, cy), 7, width=1)
+
+        # Outer Neon Border Ring with breathing glow
+        glow_factor = (180 + 75 * math.sin(elapsed * 5.0)) / 255.0
+        ring_col = (int(136 * glow_factor), int(192 * glow_factor), int(208 * glow_factor))
+        pygame.draw.circle(self.screen, ring_col, (cx, cy), vinyl_radius + 4, width=3)
+
+        # 4. Track Information Banner & Resolving Text
+        badge_s = self._load_font(18, bold=True).render("⚡ CRATE DIGGING // RESOLVING BROADCAST STREAM", True, NORD8)
+        self.screen.blit(badge_s, ((w - badge_s.get_width()) // 2, cy + vinyl_radius + 26))
+
+        if title:
+            tit_s = self._load_font(24, bold=True).render(title, True, (255, 255, 255))
+            if tit_s.get_width() > w - 100:
+                tit_s = self._load_font(20, bold=True).render(title[:55] + "...", True, (255, 255, 255))
+            self.screen.blit(tit_s, ((w - tit_s.get_width()) // 2, cy + vinyl_radius + 58))
+
+        if subtitle:
+            sub_s = self._load_font(18, bold=True).render(subtitle, True, NORD4)
+            if sub_s.get_width() > w - 100:
+                sub_s = self._load_font(16, bold=True).render(subtitle[:60] + "...", True, NORD4)
+            self.screen.blit(sub_s, ((w - sub_s.get_width()) // 2, cy + vinyl_radius + 92))
+
+        # Bottom Bar
+        self.draw_bottom_bar(pills=[("B", "Abbrechen", NORD11)], right_text="Station North • Crate Engine")
+
+    def _trigger_prefetch_next_track(self, curr_idx: int, is_tv: bool):
+        """Pre-resolves the next track's stream URL in a background worker thread"""
+        if not self.playlist:
+            return
+        next_idx = (curr_idx + 1) % len(self.playlist)
+        next_track = self.playlist[next_idx]
+        yt_id = next_track.get("youtubeId")
+        if not yt_id or Path(str(yt_id)).exists() or str(yt_id).startswith("/") or str(yt_id).startswith("."):
+            return
+        cache_key = f"{yt_id}_{'TV' if is_tv else 'RADIO'}"
+        if cache_key in self._prefetched_cache:
+            return
+
+        def _prefetch_worker():
+            try:
+                logging.info(f"Background pre-fetching next track [{next_track.get('title')}]...")
+                url, _ = get_stream(yt_id, prefer_audio_only=not is_tv)
+                if url:
+                    self._prefetched_cache[cache_key] = (url, time.time() + 14400)
+                    logging.info(f"Pre-fetch success for [{next_track.get('title')}]")
+            except Exception as e:
+                logging.warning(f"Pre-fetch failed for {yt_id}: {e}")
+
+        t = threading.Thread(target=_prefetch_worker, daemon=True)
+        t.start()
+
+    def resolve_stream_interactive(self, track: Dict, is_tv: bool = True) -> Tuple[Optional[str], bool]:
+        """Resolves stream with 0ms prefetch cache hit OR 60 FPS Crate-Digging Vinyl Animation.
+        Returns: (stream_url, was_cancelled)"""
+        local_path = track.get("path") or track.get("file")
+        if local_path and Path(local_path).exists():
+            return str(Path(local_path).resolve()), False
+
+        yt_id = track.get("youtubeId")
+        if yt_id and (Path(str(yt_id)).exists() or str(yt_id).startswith("/") or str(yt_id).startswith(".")):
+            if Path(str(yt_id)).exists():
+                return str(Path(str(yt_id)).resolve()), False
+
+        if not yt_id:
+            return None, False
+
+        cache_key = f"{yt_id}_{'TV' if is_tv else 'RADIO'}"
+        if cache_key in self._prefetched_cache:
+            url, exp = self._prefetched_cache[cache_key]
+            if time.time() < exp:
+                logging.info(f"0ms Instant Start: Pre-fetch cache hit for [{track.get('title')}]")
+                return url, False
+            else:
+                del self._prefetched_cache[cache_key]
+
+        if not pygame.display.get_init():
+            pygame.display.init()
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
+            pygame.mouse.set_visible(False)
+
+        track_title = track.get("title", "Unknown Title")
+        track_artist = track.get("artist", "Station North")
+
+        res_box = [None, False]  # [stream_url, finished]
+        def _resolve_worker():
+            try:
+                url, _ = get_stream(yt_id, prefer_audio_only=not is_tv)
+                res_box[0] = url
+            except Exception as e:
+                logging.warning(f"Interactive resolve failed for {yt_id}: {e}")
+            finally:
+                res_box[1] = True
+
+        worker_thread = threading.Thread(target=_resolve_worker, daemon=True)
+        worker_thread.start()
+
+        start_time = time.time()
+        was_cancelled = False
+
+        while not res_box[1]:
+            elapsed = time.time() - start_time
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    was_cancelled = True
+                    break
+                elif ev.type == pygame.KEYDOWN:
+                    if ev.key in (pygame.K_ESCAPE, pygame.K_b, pygame.K_q):
+                        was_cancelled = True
+                        break
+                elif ev.type == pygame.JOYBUTTONDOWN:
+                    if ev.button in (1, 6):
+                        was_cancelled = True
+                        break
+
+            if was_cancelled:
+                break
+
+            self._render_crate_digging_frame(track_title, track_artist, elapsed)
+            pygame.display.flip()
+            self.clock.tick(60)
+
+        if was_cancelled:
+            return None, True
+
+        resolved_url = res_box[0]
+        if resolved_url:
+            self._prefetched_cache[cache_key] = (resolved_url, time.time() + 14400)
+            return resolved_url, False
+
+        return None, False
 
     def show_loading_screen(self, title: str = "STATION NORTH TV", subtitle: str = "Initializing Audio Stream..."):
         if not pygame.display.get_init():
@@ -1534,7 +1762,16 @@ class SNfetchDashboard:
                     pass
             else:
                 yt_id = track.get("youtubeId")
-                stream_url, duration = get_stream(yt_id, prefer_audio_only=True)
+                cache_key = f"{yt_id}_RADIO"
+                if cache_key in self._prefetched_cache:
+                    cached_url, exp = self._prefetched_cache[cache_key]
+                    if time.time() < exp:
+                        stream_url = cached_url
+                        logging.info(f"Radio: 0ms Pre-fetch Cache Hit for [{track.get('title')}]")
+                if not stream_url:
+                    stream_url, duration = get_stream(yt_id, prefer_audio_only=True)
+                    if stream_url:
+                        self._prefetched_cache[cache_key] = (stream_url, time.time() + 14400)
 
             if stream_url and self.state == STATE_RADIO and self._resolve_id == req_id:
                 self.current_idx = idx
@@ -1555,6 +1792,7 @@ class SNfetchDashboard:
                         return
                     self.audio_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                     self.is_playing = True
+                    self._trigger_prefetch_next_track(idx, is_tv=False)
                 self.playback_start_time = time.time()
                 try:
                     self.track_duration = float(duration) if duration and float(duration) > 0 else 210.0
@@ -1673,8 +1911,6 @@ class SNfetchDashboard:
             track_title = track.get("title", "Title")
             track_artist = track.get("artist", "Artist")
 
-            self.show_loading_screen("STATION NORTH TV", f"Loading Video: {track_artist} - {track_title}")
-
             # 2:1 Rotation Check (unless Repeat mode is on)
             if not self.shuffle_mgr.is_repeat_mode and self.station_mgr.should_play_station_content():
                 tv_id_path = self.station_mgr.get_next_tv_id()
@@ -1685,26 +1921,17 @@ class SNfetchDashboard:
                         pygame.display.init()
                         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DISPLAY_FLAGS)
                         pygame.mouse.set_visible(False)
-                    self.show_loading_screen("STATION NORTH TV", f"Loading Video: {track_artist} - {track_title}")
 
-            local_path = track.get("path") or track.get("file")
-            is_local = False
-            stream_url = None
-            if local_path and Path(local_path).exists():
-                is_local = True
-                stream_url = str(Path(local_path).resolve())
-            elif track.get("youtubeId") and (Path(str(track.get("youtubeId"))).exists() or str(track.get("youtubeId")).startswith("/") or str(track.get("youtubeId")).startswith(".")):
-                if Path(str(track.get("youtubeId"))).exists():
-                    is_local = True
-                    stream_url = str(Path(str(track.get("youtubeId"))).resolve())
-
-            if not is_local:
-                yt_id = track.get("youtubeId")
-                stream_url, _ = get_stream(yt_id, prefer_audio_only=False)
+            # Interactive Crate-Digging Resolver (0ms on pre-fetch cache hit, 60 FPS vinyl animation if loading)
+            stream_url, was_cancelled = self.resolve_stream_interactive(track, is_tv=True)
+            if was_cancelled:
+                logging.info("User cancelled video resolution via [B]. Returning to menu.")
+                break
 
             if not stream_url:
                 logging.warning(f"Could not resolve stream for '{track_title}'. Checking next track...")
-                self.show_loading_screen("STREAM RESOLVER", f"Unable to resolve stream: {track_title}\nChecking connection...")
+                self._render_crate_digging_frame("STREAM RESOLVER", f"Unable to resolve stream: {track_title}\nChecking connection...", 0.0)
+                pygame.display.flip()
                 time.sleep(1.0)
                 curr_idx = self.shuffle_mgr.advance_next()
                 show_osd_this_track = False
@@ -1716,6 +1943,7 @@ class SNfetchDashboard:
             logo_file = APP_DIR / "sn_logo.png"
             logo_path = str(logo_file) if logo_file.exists() else str(Path("sn_logo.png").resolve())
 
+            is_local = track.get("is_local", False) or not (stream_url.startswith("http://") or stream_url.startswith("https://"))
             is_audio_only = is_local and Path(stream_url).suffix.lower() in {".mp3", ".flac", ".ogg", ".wav", ".m4a", ".opus", ".aac"}
             if not is_audio_only:
                 # 4:3 Display-Fill + 65% Logo Transparenz + Elegante Bauchbinde (Crash-sicheres Scale & Crop)
@@ -1768,6 +1996,7 @@ class SNfetchDashboard:
                 pygame.display.quit()
                 play_start_time = time.time()
                 proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
+                self._trigger_prefetch_next_track(curr_idx, is_tv=True)
             except Exception as e:
                 logging.error(f"Failed to launch video player: {e}")
                 if not pygame.display.get_init():
@@ -2558,21 +2787,29 @@ class SNfetchDashboard:
         pygame.draw.rect(self.screen, (34, 39, 49), (box_x, lower_box_y, box_w, box_h), border_radius=16)
         pygame.draw.rect(self.screen, (46, 52, 64), (box_x, lower_box_y, box_w, box_h), width=2, border_radius=16)
 
+        is_celebrating = (self.sync_completed_timestamp > 0 and (time.time() - self.sync_completed_timestamp < 5.0))
+        show_progress_bar = self.sync_active or is_celebrating or (pct < 99.0)
+
         if self.sync_active:
-            disp_pct = max(self.sync_pct, pct)
+            disp_pct = self.sync_pct
             hdr_text = f"DOWNLOADING MEDIA ASSETS ({int(disp_pct)}% READY)"
             hdr_col = NORD8
             sub_text = self.sync_status_text if self.sync_status_text else "Downloading media pack from GitHub..."
             sub_col = NORD5
+        elif is_celebrating:
+            hdr_text = "✦ ALL MEDIA ASSETS SYNCHRONIZED (100% READY) ✦"
+            hdr_col = NORD14
+            sub_text = "174 Station Jingles   •   42 Retro TV Idents (4:3)   •   131 Chronicles Pages & Lore Audio Ready"
+            sub_col = (255, 255, 255)
         elif pct >= 99.0:
-            hdr_text = "ALL MEDIA ASSETS SYNCHRONIZED (100% READY)"
+            hdr_text = "✦ THE QUEEN'S FREQUENCY // BROADCAST TRANSMISSION ✦"
             hdr_col = NORD7
-            sub_text = "174 Station Jingles   •   42 Retro TV Idents (4:3)   •   98 Chronicles Pages"
-            sub_col = NORD5
+            sub_text = f"All 347 Station Media Assets Synchronized ({j_found} Jingles • {t_found} TV Idents • {c_found} Chronicles)"
+            sub_col = NORD4
         else:
             hdr_text = f"ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
             hdr_col = NORD13
-            sub_text = f"Local Assets: {j_found}/174 Jingles   •   {t_found}/42 TV Idents   •   {c_found}/98 Comics"
+            sub_text = f"Local Assets: {j_found}/174 Jingles   •   {t_found}/42 TV Idents   •   {c_found}/131 Chronicles"
             sub_col = NORD5
 
         # Header with indicator dot
@@ -2580,29 +2817,49 @@ class SNfetchDashboard:
         sync_title = self._load_font(21, bold=True).render(hdr_text, True, hdr_col)
         self.screen.blit(sync_title, (box_x + 50, lower_box_y + 20))
 
-        # Subtext breakdown (fits cleanly with generous breathing room, no breakout)
+        # Subtext breakdown
         details_surf = self._load_font(17, bold=True).render(sub_text, True, sub_col)
         self.screen.blit(details_surf, (box_x + 28, lower_box_y + 52))
 
-        # Wide Progress Bar
-        bar_w = box_w - 56
-        bar_h = 16
-        bar_x = box_x + 28
-        bar_y = lower_box_y + 82
-        pygame.draw.rect(self.screen, (20, 24, 32), (bar_x, bar_y, bar_w, bar_h), border_radius=8)
-        curr_pct = max(self.sync_pct, pct) if self.sync_active else pct
-        fill_w = max(6, int(bar_w * (min(100.0, curr_pct) / 100.0)))
-        bar_col = NORD8 if self.sync_active else (NORD7 if pct >= 99.0 else NORD13)
-        pygame.draw.rect(self.screen, bar_col, (bar_x, bar_y, fill_w, bar_h), border_radius=8)
+        # Segmented LED Progress Bar (Cyberdeck Style: 30 rectangles with 4px gap)
+        if show_progress_bar:
+            bar_w = box_w - 56
+            bar_h = 16
+            bar_x = box_x + 28
+            bar_y = lower_box_y + 82
+            num_segs = 30
+            seg_gap = 4
+            total_gaps = (num_segs - 1) * seg_gap
+            seg_w = (bar_w - total_gaps) // num_segs
+            curr_pct = self.sync_pct if self.sync_active else (100.0 if pct >= 99.0 else pct)
+            active_segs = int((min(100.0, curr_pct) / 100.0) * num_segs)
 
-        # 4. Randomized Lore & Quotes from sprueche.json in Aurora Colors (replaces old hint line)
+            for s_idx in range(num_segs):
+                sx = bar_x + s_idx * (seg_w + seg_gap)
+                s_rect = pygame.Rect(sx, bar_y, seg_w, bar_h)
+                if s_idx < active_segs:
+                    seg_col = NORD8 if self.sync_active else (NORD14 if pct >= 99.0 else NORD13)
+                    pygame.draw.rect(self.screen, seg_col, s_rect, border_radius=3)
+                else:
+                    pygame.draw.rect(self.screen, (22, 26, 34), s_rect, border_radius=3)
+                    pygame.draw.rect(self.screen, (38, 44, 56), s_rect, width=1, border_radius=3)
+
+            div_y = lower_box_y + 112
+            badge_y = lower_box_y + 122
+            line_start_y = lower_box_y + 148
+        else:
+            # When fully synchronized and celebration has expired: progress bar is completely HIDDEN!
+            div_y = lower_box_y + 82
+            badge_y = lower_box_y + 92
+            line_start_y = lower_box_y + 118
+
+        # 4. Randomized Lore & Quotes from sprueche.json in Aurora Colors
         self._check_cycle_quote()
-        # Subtle horizontal divider line
-        pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, lower_box_y + 112), (box_x + box_w - 28, lower_box_y + 112), 1)
+        pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, div_y), (box_x + box_w - 28, div_y), 1)
 
         # Broadcast badge
-        badge_surf = self._load_font(14, bold=True).render("✦ THE QUEEN'S FREQUENCY // BROADCAST TRANSMISSION ✦", True, NORD9)
-        self.screen.blit(badge_surf, (box_x + 28, lower_box_y + 122))
+        badge_surf = self._load_font(14, bold=True).render("✦ QUEEN DIRECTIVES // TRANSMISSION FEED ✦", True, NORD9)
+        self.screen.blit(badge_surf, (box_x + 28, badge_y))
 
         # Word-wrapped Quote Text in Randomized Aurora Color
         q_font = self._load_font(20, bold=True)
@@ -2612,9 +2869,10 @@ class SNfetchDashboard:
             q_font = self._load_font(18, bold=True)
             quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
 
-        line_y = lower_box_y + 148
+        line_y = line_start_y
         line_h = 28 if q_font.size("A")[1] >= 20 else 24
-        for line in quote_lines[:4]:
+        max_visible_lines = 4 if show_progress_bar else 5
+        for line in quote_lines[:max_visible_lines]:
             q_surf = q_font.render(line, True, self.current_quote_color)
             self.screen.blit(q_surf, (box_x + 28, line_y))
             line_y += line_h
@@ -3073,6 +3331,7 @@ class SNfetchDashboard:
         self.screen.blit(qh_s, ((SCREEN_WIDTH - qh_s.get_width()) // 2, 62))
 
         # --- LINKE SPALTE: EINSTELLUNGEN & REGLER (x=30, w=480) ---
+        j_found, t_found, c_found, tot_found, a_pct = self.get_asset_stats()
         settings_items = [
             ("Radio Active Playlist", self.available_playlists[self.radio_playlist_idx]["title"] if self.available_playlists else "Standard"),
             ("TV Active Playlist", self.available_playlists[self.tv_playlist_idx]["title"] if self.available_playlists else "Standard"),
@@ -3080,7 +3339,7 @@ class SNfetchDashboard:
             ("Single-Track Repeat Loop", "ENABLED (Repeat One)" if self.shuffle_mgr.is_repeat_mode else "DISABLED (Shuffle)"),
             ("Master Audio Volume", f"{self.hardware.get_master_volume()}%"),
             ("Screen Backlight Brightness", f"{self.hardware.get_brightness()}%"),
-            ("Re-Scan Local Asset Storage", "Press [A] to Trigger"),
+            ("Media Assets & Synchronisation", f"{tot_found}/347 ({int(a_pct)}%) • [A] Prüfen / Sync"),
             ("📖 Open System Handbook", "Press [A] or [►] to Jump to Right Column")
         ]
 
@@ -3346,7 +3605,6 @@ class SNfetchDashboard:
                     self.splash_cursor = 3
             elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER, pygame.K_p, pygame.K_a):
                 if self.splash_cursor == 0:
-                    self.show_loading_screen("RADIO MODE", "Loading Station North Radio...")
                     self.state = STATE_RADIO
                     self._state_transition_time = time.time()
                     pygame.event.clear()
@@ -3354,7 +3612,6 @@ class SNfetchDashboard:
                     self.trigger_play_track_async(self.current_idx)
                     return True
                 elif self.splash_cursor == 1:
-                    self.show_loading_screen("STATION NORTH TV", "Starting Television Broadcast...")
                     self._load_active_playlist(is_tv=True)
                     self.launch_video_playback(self.current_idx, manual_trigger=True)
                     self.state = STATE_SPLASH
@@ -3363,7 +3620,6 @@ class SNfetchDashboard:
                     pygame.event.clear()
                     return True
                 elif self.splash_cursor == 2:
-                    self.show_loading_screen("THE CHRONICLES", "Loading Comic & Voice Lore...")
                     self.state = STATE_CHRONICLES
                     self._state_transition_time = time.time()
                     pygame.event.clear()
