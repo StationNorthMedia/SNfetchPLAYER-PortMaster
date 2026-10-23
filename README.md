@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/Platform-dArkOS%20%7C%20ArkOS-88C0D0?style=for-the-badge&logo=linux&logoColor=white" alt="dArkOS & ArkOS" />
   <img src="https://img.shields.io/badge/Display-4%3A3%20Native%20KMSDRM-81A1C1?style=for-the-badge" alt="4:3 KMSDRM" />
   <img src="https://img.shields.io/badge/Audio-Direct%20ALSA%20Hardware-A3BE8C?style=for-the-badge" alt="Direct ALSA" />
+  <a href="https://github.com/StationNorthMedia/SNfetchPLAYER"><img src="https://img.shields.io/badge/Android%20Companion-SNfetchPLAYER-A3BE8C?style=for-the-badge&logo=android&logoColor=white" alt="Android Companion" /></a>
   <img src="https://img.shields.io/badge/Vibe-The%20Queen's%20Frequency-B48EAD?style=for-the-badge" alt="The Queen" />
 </p>
 
@@ -113,6 +114,20 @@ SNfetchPLAYER automatically detects and indexes local media:
     ├── us_hiphop_top50.json
     └── us_rnb_top50.json
 ```
+
+---
+
+## 📱 Native Android Companion: Station North Android App
+
+Have an Android device or want to stream Station North on your smartphone?  
+SNfetchPLAYER is also available as a full-featured, hardware-accelerated **native Android app** in the companion repository:
+
+👉 **[StationNorthMedia/SNfetchPLAYER Repository](https://github.com/StationNorthMedia/SNfetchPLAYER)**  
+👉 **[Download Latest Android APK (GitHub Releases)](https://github.com/StationNorthMedia/SNfetchPLAYER/releases/latest)**
+
+- **Mobile Companion**: Stream your favorite Station North channels directly on your Android phone or Android handheld.
+- **Playlist Sync**: Curate your music and video queues on Android, export them as JSON playlists, and drop them right into your Linux handheld's `/playlists/` directory.
+- **Unified Ecosystem**: Features the same InnerTube streaming architecture, custom track catalogs, and late-night aesthetic universe.
 
 ---
 
