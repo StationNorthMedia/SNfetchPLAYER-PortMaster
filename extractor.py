@@ -9,12 +9,50 @@ Liefert direkte googlevideo Stream-URLs in unter 0.4 Sekunden.
 
 import json
 import logging
+import subprocess
 import urllib.request
 from typing import Optional, Tuple
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s")
 
 PLAYER_ENDPOINT = "https://www.youtube.com/youtubei/v1/player"
+
+def _fetch_player_data(payload: dict, headers: dict, timeout: int = 8) -> Optional[dict]:
+    """
+    Fetches player data using native system curl first (avoids Python _ssl/OpenSSL 1.1 dependency),
+    falling back to standard urllib if needed.
+    """
+    # 1. Native system curl (100% CFW compatible, uses system TLS, zero Python _ssl dependency)
+    try:
+        header_args = []
+        for k, v in headers.items():
+            header_args.extend(["-H", f"{k}: {v}"])
+        cmd = [
+            "curl", "-s", "--max-time", str(timeout),
+            "-X", "POST",
+            *header_args,
+            "-d", json.dumps(payload),
+            PLAYER_ENDPOINT
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 1)
+        if res.returncode == 0 and res.stdout:
+            return json.loads(res.stdout)
+    except Exception as e:
+        logging.debug(f"curl fetch error: {e}")
+
+    # 2. urllib fallback (if curl is missing)
+    try:
+        req = urllib.request.Request(
+            PLAYER_ENDPOINT,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        logging.warning(f"urllib fetch error: {e}")
+
+    return None
 
 CLIENT_PROFILES = [
     {
@@ -79,13 +117,9 @@ def get_stream(video_id: str, prefer_audio_only: bool = False) -> Tuple[Optional
                 "Origin": "https://www.youtube.com"
             }
 
-            req = urllib.request.Request(
-                PLAYER_ENDPOINT,
-                data=json.dumps(payload).encode("utf-8"),
-                headers=headers
-            )
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            data = _fetch_player_data(payload, headers, timeout=8)
+            if not data:
+                continue
 
             playability = data.get("playabilityStatus", {})
             status = playability.get("status")
@@ -141,7 +175,7 @@ def get_stream(video_id: str, prefer_audio_only: bool = False) -> Tuple[Optional
                 return url, quality
 
         except Exception as e:
-            logging.debug(f"Fehler mit Client {profile['name']}: {e}")
+            logging.warning(f"Client {profile['name']} error for {video_id}: {type(e).__name__}: {e}")
 
     logging.error(f"Alle Client-Profile fehlgeschlagen für {video_id}")
     return None, None

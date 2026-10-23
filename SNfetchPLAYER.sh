@@ -68,6 +68,8 @@ fi
 
 export HOME="$GAMEDIR"
 export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
+export SDL_AUDIODRIVER="alsa"
+export AUDIODEV="default"
 
 # Gamepad-to-Keyboard Mapping starten
 if [ -n "$GPTOKEYB" ]; then

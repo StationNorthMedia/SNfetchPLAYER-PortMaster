@@ -52,6 +52,10 @@ if [ -d "$SCRIPT_DIR/pylib" ]; then
   cp -r "$SCRIPT_DIR/pylib/"* "$PKG_DIR/pylib/"
 fi
 mkdir -p "$PKG_DIR/assets"
+if [ -d "$SCRIPT_DIR/assets/ui" ]; then
+  mkdir -p "$PKG_DIR/assets/ui"
+  cp -r "$SCRIPT_DIR/assets/ui/"* "$PKG_DIR/assets/ui/"
+fi
 if [ -f "$SCRIPT_DIR/assets/catalog_manifest.json" ]; then
   cp "$SCRIPT_DIR/assets/catalog_manifest.json" "$PKG_DIR/assets/"
 fi

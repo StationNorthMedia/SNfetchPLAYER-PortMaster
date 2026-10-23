@@ -32,7 +32,7 @@ rsync -avz playlists/ $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/playlists/
 # 5. Launcher-Skript kopieren und Rechte setzen
 echo "⚙️ Kopiere Launcher & setze Berechtigungen..."
 scp -o BatchMode=yes -o ConnectTimeout=5 SNfetchPLAYER.sh $REMOTE_USER@$DEVICE_IP:$REMOTE_LAUNCHER
-ssh -o BatchMode=yes -o ConnectTimeout=5 $REMOTE_USER@$DEVICE_IP "chmod +x $REMOTE_LAUNCHER $REMOTE_TARGET/*.py && rm -rf $REMOTE_TARGET/python_3.11.cache 2>/dev/null || true"
+ssh -o BatchMode=yes -o ConnectTimeout=5 $REMOTE_USER@$DEVICE_IP "chmod +x $REMOTE_LAUNCHER $REMOTE_TARGET/*.py && rm -rf $REMOTE_TARGET/python_3.11.cache $REMOTE_TARGET/pylib 2>/dev/null || true"
 
 echo "=========================================================="
 echo "✅ Deployment erfolgreich abgeschlossen!"
