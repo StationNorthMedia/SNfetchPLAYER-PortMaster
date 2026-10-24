@@ -2754,6 +2754,15 @@ class SNfetchDashboard:
         # 1. Top Bar / Header with official SN Logo
         self.draw_top_bar(custom_title="STATION NORTH", subtitle="CYBERDECK MEDIA SUITE • v6.0", show_logo=show_top_logo)
 
+        # Layout Dimensions (Total width 910px centered on 1024px screen)
+        card_w = 230
+        card_h = 320
+        gap = 20
+        right_col_w = 160
+        right_card_h = (card_h - gap) // 2
+        total_w = 3 * card_w + right_col_w + 3 * gap
+        start_x = (SCREEN_WIDTH - total_w) // 2
+
         # 2. Upper Section: Asset Synchronisation & Queen Directives Quote Box
         box_w = 910
         box_h = 286
