@@ -2754,17 +2754,132 @@ class SNfetchDashboard:
         # 1. Top Bar / Header with official SN Logo
         self.draw_top_bar(custom_title="STATION NORTH", subtitle="CYBERDECK MEDIA SUITE • v6.0", show_logo=show_top_logo)
 
-        # 2. 3+2 Grid Setup (Balanced for 48px footer and 56px header)
-        card_w = 230
-        card_h = 320
-        gap = 20
+        # 2. Upper Section: Asset Synchronisation & Queen Directives Quote Box
+        box_w = 910
+        box_h = 286
+        box_x = start_x
+        box_y = 74 + slide_offset
 
-        right_col_w = 160
-        right_card_h = (card_h - gap) // 2
+        pygame.draw.rect(self.screen, (34, 39, 49), (box_x, box_y, box_w, box_h), border_radius=16)
 
-        total_w = 3 * card_w + right_col_w + 3 * gap
-        start_x = (SCREEN_WIDTH - total_w) // 2
-        card_y = 78 + slide_offset
+        # Subtle dark-tinted background artwork if available
+        if hasattr(self, "quote_bg_surfaces") and self.quote_bg_surfaces:
+            bg_surf = self.quote_bg_surfaces[self.current_quote_bg_idx % len(self.quote_bg_surfaces)]
+            self.screen.blit(bg_surf, (box_x, box_y))
+
+        pygame.draw.rect(self.screen, (46, 52, 64), (box_x, box_y, box_w, box_h), width=2, border_radius=16)
+
+        j_found, t_found, c_found, total_found, pct = self.get_asset_stats()
+        is_celebrating = (self.sync_completed_timestamp > 0 and (time.time() - self.sync_completed_timestamp < 5.0))
+        show_progress_bar = self.sync_active or is_celebrating or (pct < 99.0)
+
+        # Randomized Lore & Quotes from sprueche.json in Aurora Colors
+        self._check_cycle_quote()
+
+        if show_progress_bar:
+            if self.sync_active:
+                disp_pct = self.sync_pct
+                hdr_text = f"DOWNLOADING MEDIA ASSETS ({int(disp_pct)}% READY)"
+                hdr_col = NORD8
+                sub_text = self.sync_status_text if self.sync_status_text else "Downloading media pack from GitHub..."
+                sub_col = NORD5
+            elif is_celebrating:
+                hdr_text = "✦ ALL MEDIA ASSETS SYNCHRONIZED (100% READY) ✦"
+                hdr_col = NORD14
+                sub_text = "174 Station Jingles   •   42 Retro TV Idents (4:3)   •   131 Chronicles Pages & Lore Audio Ready"
+                sub_col = (255, 255, 255)
+            else:
+                hdr_text = f"ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
+                hdr_col = NORD13
+                sub_text = f"Local Assets: {j_found}/174 Jingles   •   {t_found}/42 TV Idents   •   {c_found}/131 Chronicles"
+                sub_col = NORD5
+
+            # Header with indicator dot
+            pygame.draw.circle(self.screen, hdr_col, (box_x + 34, box_y + 32), 7)
+            sync_title = self._load_font(21, bold=True).render(hdr_text, True, hdr_col)
+            self.screen.blit(sync_title, (box_x + 50, box_y + 20))
+
+            # Subtext breakdown
+            details_surf = self._load_font(17, bold=True).render(sub_text, True, sub_col)
+            self.screen.blit(details_surf, (box_x + 28, box_y + 52))
+
+            # Segmented LED Progress Bar (Cyberdeck Style: 30 rectangles with 4px gap)
+            bar_w = box_w - 56
+            bar_h = 16
+            bar_x = box_x + 28
+            bar_y = box_y + 82
+            num_segs = 30
+            seg_gap = 4
+            total_gaps = (num_segs - 1) * seg_gap
+            seg_w = (bar_w - total_gaps) // num_segs
+            curr_pct = self.sync_pct if self.sync_active else (100.0 if pct >= 99.0 else pct)
+            active_segs = int((min(100.0, curr_pct) / 100.0) * num_segs)
+
+            for s_idx in range(num_segs):
+                sx = bar_x + s_idx * (seg_w + seg_gap)
+                s_rect = pygame.Rect(sx, bar_y, seg_w, bar_h)
+                if s_idx < active_segs:
+                    seg_col = NORD8 if self.sync_active else (NORD14 if pct >= 99.0 else NORD13)
+                    pygame.draw.rect(self.screen, seg_col, s_rect, border_radius=3)
+                else:
+                    pygame.draw.rect(self.screen, (22, 26, 34), s_rect, border_radius=3)
+                    pygame.draw.rect(self.screen, (38, 44, 56), s_rect, width=1, border_radius=3)
+
+            # Divider line and lower quote section
+            div_y = box_y + 112
+            pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, div_y), (box_x + box_w - 28, div_y), 1)
+
+            badge_surf = self._load_font(14, bold=True).render("✦ QUEEN DIRECTIVES // TRANSMISSION FEED ✦", True, NORD9)
+            self.screen.blit(badge_surf, (box_x + 28, box_y + 122))
+
+            max_visible_lines = 4
+            q_font = self._load_font(19, bold=True)
+            max_q_w = box_w - 56
+            quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
+            visible_lines = quote_lines[:max_visible_lines]
+            line_y = box_y + 148
+            line_h = 26
+            for line in visible_lines:
+                q_surf = q_font.render(line, True, self.current_quote_color)
+                self.screen.blit(q_surf, (box_x + 28, line_y))
+                line_y += line_h
+        else:
+            # Variant B: Pure Queen Directives Console aligned to the bottom of the box!
+            # The upper area stays completely free of text to let the artwork shine.
+            badge_font = self._load_font(18, bold=True)
+            badge_surf = badge_font.render("✦ THE QUEEN'S DIRECTIVES // TRANSMISSION FEED ✦", True, NORD8)
+            badge_h = badge_surf.get_height()
+
+            # Measure quote block
+            q_font = self._load_font(21, bold=True)
+            max_q_w = box_w - 56
+            quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
+            max_visible_lines = 4
+            if len(quote_lines) > max_visible_lines:
+                q_font = self._load_font(18, bold=True)
+                quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
+
+            visible_lines = quote_lines[:max_visible_lines]
+            line_h = 32 if len(visible_lines) <= 2 else 28
+            quote_block_h = len(visible_lines) * line_h
+
+            total_text_h = badge_h + 10 + quote_block_h
+            bottom_pad = 22
+            badge_y = (box_y + box_h) - bottom_pad - total_text_h
+            quote_start_y = badge_y + badge_h + 10
+
+            # Glowing indicator dot & Badge text
+            pygame.draw.circle(self.screen, NORD8, (box_x + 34, badge_y + badge_h // 2), 6)
+            self.screen.blit(badge_surf, (box_x + 48, badge_y))
+
+            line_y = quote_start_y
+            for line in visible_lines:
+                q_surf = q_font.render(line, True, self.current_quote_color)
+                self.screen.blit(q_surf, (box_x + 28, line_y))
+                line_y += line_h
+
+        # 3. Lower Section: 3+2 Grid Setup (Balanced for 48px footer and upper box)
+        card_y = box_y + box_h + 18
 
         # 5 Target Rectangles: 0=Radio, 1=TV, 2=Chronicles, 3=Settings, 4=Exit
         target_rects = [
@@ -2853,110 +2968,6 @@ class SNfetchDashboard:
         glow_rect = cur_rect.inflate(8, 8)
         pygame.draw.rect(self.screen, (136, 192, 208), glow_rect, width=4, border_radius=18)
         pygame.draw.rect(self.screen, (255, 255, 255), cur_rect.inflate(4, 4), width=2, border_radius=17)
-
-        # 3. Lower Section: Asset Synchronisation & Randomized Aurora Quotes
-        j_found, t_found, c_found, total_found, pct = self.get_asset_stats()
-        lower_box_y = card_y + card_h + 18
-        box_w = 910
-        box_h = 286
-        box_x = start_x
-        pygame.draw.rect(self.screen, (34, 39, 49), (box_x, lower_box_y, box_w, box_h), border_radius=16)
-
-        # Subtle dark-tinted background artwork if available
-        if hasattr(self, "quote_bg_surfaces") and self.quote_bg_surfaces:
-            bg_surf = self.quote_bg_surfaces[self.current_quote_bg_idx % len(self.quote_bg_surfaces)]
-            self.screen.blit(bg_surf, (box_x, lower_box_y))
-
-        pygame.draw.rect(self.screen, (46, 52, 64), (box_x, lower_box_y, box_w, box_h), width=2, border_radius=16)
-
-        is_celebrating = (self.sync_completed_timestamp > 0 and (time.time() - self.sync_completed_timestamp < 5.0))
-        show_progress_bar = self.sync_active or is_celebrating or (pct < 99.0)
-
-        if show_progress_bar:
-            if self.sync_active:
-                disp_pct = self.sync_pct
-                hdr_text = f"DOWNLOADING MEDIA ASSETS ({int(disp_pct)}% READY)"
-                hdr_col = NORD8
-                sub_text = self.sync_status_text if self.sync_status_text else "Downloading media pack from GitHub..."
-                sub_col = NORD5
-            elif is_celebrating:
-                hdr_text = "✦ ALL MEDIA ASSETS SYNCHRONIZED (100% READY) ✦"
-                hdr_col = NORD14
-                sub_text = "174 Station Jingles   •   42 Retro TV Idents (4:3)   •   131 Chronicles Pages & Lore Audio Ready"
-                sub_col = (255, 255, 255)
-            else:
-                hdr_text = f"ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
-                hdr_col = NORD13
-                sub_text = f"Local Assets: {j_found}/174 Jingles   •   {t_found}/42 TV Idents   •   {c_found}/131 Chronicles"
-                sub_col = NORD5
-
-            # Header with indicator dot
-            pygame.draw.circle(self.screen, hdr_col, (box_x + 34, lower_box_y + 32), 7)
-            sync_title = self._load_font(21, bold=True).render(hdr_text, True, hdr_col)
-            self.screen.blit(sync_title, (box_x + 50, lower_box_y + 20))
-
-            # Subtext breakdown
-            details_surf = self._load_font(17, bold=True).render(sub_text, True, sub_col)
-            self.screen.blit(details_surf, (box_x + 28, lower_box_y + 52))
-
-            # Segmented LED Progress Bar (Cyberdeck Style: 30 rectangles with 4px gap)
-            bar_w = box_w - 56
-            bar_h = 16
-            bar_x = box_x + 28
-            bar_y = lower_box_y + 82
-            num_segs = 30
-            seg_gap = 4
-            total_gaps = (num_segs - 1) * seg_gap
-            seg_w = (bar_w - total_gaps) // num_segs
-            curr_pct = self.sync_pct if self.sync_active else (100.0 if pct >= 99.0 else pct)
-            active_segs = int((min(100.0, curr_pct) / 100.0) * num_segs)
-
-            for s_idx in range(num_segs):
-                sx = bar_x + s_idx * (seg_w + seg_gap)
-                s_rect = pygame.Rect(sx, bar_y, seg_w, bar_h)
-                if s_idx < active_segs:
-                    seg_col = NORD8 if self.sync_active else (NORD14 if pct >= 99.0 else NORD13)
-                    pygame.draw.rect(self.screen, seg_col, s_rect, border_radius=3)
-                else:
-                    pygame.draw.rect(self.screen, (22, 26, 34), s_rect, border_radius=3)
-                    pygame.draw.rect(self.screen, (38, 44, 56), s_rect, width=1, border_radius=3)
-
-            # Divider line and lower quote section
-            div_y = lower_box_y + 112
-            pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, div_y), (box_x + box_w - 28, div_y), 1)
-
-            badge_surf = self._load_font(14, bold=True).render("✦ QUEEN DIRECTIVES // TRANSMISSION FEED ✦", True, NORD9)
-            self.screen.blit(badge_surf, (box_x + 28, lower_box_y + 122))
-
-            line_start_y = lower_box_y + 148
-            max_visible_lines = 4
-        else:
-            # When fully synchronized and celebration has expired: NO asset header or numbers! Pure Queen Directives Console!
-            pygame.draw.circle(self.screen, NORD8, (box_x + 34, lower_box_y + 30), 6)
-            badge_surf = self._load_font(18, bold=True).render("✦ THE QUEEN'S DIRECTIVES // TRANSMISSION FEED ✦", True, NORD8)
-            self.screen.blit(badge_surf, (box_x + 48, lower_box_y + 20))
-
-            pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, lower_box_y + 52), (box_x + box_w - 28, lower_box_y + 52), 1)
-
-            line_start_y = lower_box_y + 68
-            max_visible_lines = 6
-
-        # 4. Randomized Lore & Quotes from sprueche.json in Aurora Colors
-        self._check_cycle_quote()
-
-        q_font = self._load_font(21 if not show_progress_bar else 19, bold=True)
-        max_q_w = box_w - 56
-        quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
-        if len(quote_lines) > max_visible_lines:
-            q_font = self._load_font(18, bold=True)
-            quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
-
-        line_y = line_start_y
-        line_h = 32 if not show_progress_bar else 26
-        for line in quote_lines[:max_visible_lines]:
-            q_surf = q_font.render(line, True, self.current_quote_color)
-            self.screen.blit(q_surf, (box_x + 28, line_y))
-            line_y += line_h
 
         # 4. Harmonized Bottom Footer Bar with Pills (NO [B] Exit!)
         menu_pills = [
