@@ -95,7 +95,7 @@ Configured for native dArkOS / ArkOS gamepads with hardware debounce:
 
 Two installation packages are available in [GitHub Releases](https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/latest):
 
-### Option 1: Lightweight Online Package (`snfetchplayer.zip` ~390 KB)
+### Option 1: Lightweight Online Package (`snfetchplayer.zip` ~829 KB)
 *Recommended for Wi-Fi enabled handhelds.*
 1. Download `snfetchplayer.zip`.
 2. Extract the archive into your SD card's `ports/` directory:
@@ -107,11 +107,17 @@ Two installation packages are available in [GitHub Releases](https://github.com/
 3. Boot your device, connect to Wi-Fi, and launch **Station North SNfetchPLAYER** from the **Ports** menu.
 4. On first launch, the built-in **High-Speed Asset Downloader** will automatically download and unpack the media bundle (jingles, TV idents, comics).
 
-### Option 2: Full Offline Bundle (`snfetchplayer-full.zip` ~298 MB)
+### Option 2: Full Offline Bundle (`snfetchplayer-full.zip` ~285 MB)
 *Recommended for offline devices or zero-setup plug-and-play.*
 1. Download `snfetchplayer-full.zip`.
 2. Extract directly to `/roms/ports/` on your SD card.
-3. Plug in and play immediately with zero downloads required!
+3. Plug in and enjoy all 98 voiced comic panels, Queen Faith narrations, and radio station jingles pre-installed with zero downloads!
+
+> [!IMPORTANT]
+> **Media Playback Notice (Connect Wi-Fi or Supply Your Own Media)**:  
+> While the Full Offline Bundle includes all interactive story lore (*The Chronicles*, voiceovers, station idents, and cyberdeck artwork), the media player decks require a media source:
+> - **Live Streaming**: Connect your device to **Wi-Fi** to stream live curated Station North radio stations and 4:3 vintage TV channels.
+> - **100% Offline Media**: If you stay completely offline, please **fill your own audio (MP3, FLAC) and video (MP4) files into the `music/` and `videos/` folders** described below!
 
 ---
 
