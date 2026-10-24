@@ -35,14 +35,15 @@ chmod +x "$PKG_DIR"/*.py
 
 # 4. Playlists, Music, Videos & Manifest kopieren
 cp -r "$SCRIPT_DIR/playlists/"* "$PKG_DIR/playlists/"
-if [ -d "$SCRIPT_DIR/music" ]; then
-  mkdir -p "$PKG_DIR/music"
-  cp -r "$SCRIPT_DIR/music/"* "$PKG_DIR/music/"
-fi
-if [ -d "$SCRIPT_DIR/videos" ]; then
-  mkdir -p "$PKG_DIR/videos"
-  cp -r "$SCRIPT_DIR/videos/"* "$PKG_DIR/videos/"
-fi
+mkdir -p "$PKG_DIR/music/HipHop" "$PKG_DIR/music/Rock"
+cp "$SCRIPT_DIR/music/README.txt" "$PKG_DIR/music/" 2>/dev/null || true
+cp "$SCRIPT_DIR/music/HipHop/README.txt" "$PKG_DIR/music/HipHop/" 2>/dev/null || true
+cp "$SCRIPT_DIR/music/Rock/README.txt" "$PKG_DIR/music/Rock/" 2>/dev/null || true
+
+mkdir -p "$PKG_DIR/videos/HipHop" "$PKG_DIR/videos/Rock"
+cp "$SCRIPT_DIR/videos/README.txt" "$PKG_DIR/videos/" 2>/dev/null || true
+cp "$SCRIPT_DIR/videos/HipHop/README.txt" "$PKG_DIR/videos/HipHop/" 2>/dev/null || true
+cp "$SCRIPT_DIR/videos/Rock/README.txt" "$PKG_DIR/videos/Rock/" 2>/dev/null || true
 if [ -d "$SCRIPT_DIR/licenses" ]; then
   mkdir -p "$PKG_DIR/licenses"
   cp -r "$SCRIPT_DIR/licenses/"* "$PKG_DIR/licenses/"
