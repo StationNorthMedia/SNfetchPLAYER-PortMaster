@@ -6,18 +6,22 @@
 
 <p align="center">
   <b>The Sovereign Cyberdeck & Retro Media Suite for Handheld Gaming Consoles</b><br>
-  <i>Tailored specifically for 4:3 Handhelds (R36S, R35S, RK3326) running dArkOS & ArkOS</i>
+  <i>Tailored specifically for 4:3 Handhelds (XiFan XF-45V, R36S Max 2, R36S, R35S, RK3326) running dArkOS & ArkOS</i>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Platform-dArkOS%20%7C%20ArkOS-88C0D0?style=for-the-badge&logo=linux&logoColor=white" alt="dArkOS & ArkOS" />
-  <img src="https://img.shields.io/badge/Display-4%3A3%20Native%20KMSDRM-81A1C1?style=for-the-badge" alt="4:3 KMSDRM" />
-  <img src="https://img.shields.io/badge/Audio-Direct%20ALSA%20Hardware-A3BE8C?style=for-the-badge" alt="Direct ALSA" />
-  <a href="https://github.com/StationNorthMedia/SNfetchPLAYER"><img src="https://img.shields.io/badge/Android%20Companion-SNfetchPLAYER-A3BE8C?style=for-the-badge&logo=android&logoColor=white" alt="Android Companion" /></a>
+  <img src="https://img.shields.io/badge/Release-v7.0.0-88C0D0?style=for-the-badge&logo=github&logoColor=white" alt="v7.0.0" />
+  <img src="https://img.shields.io/badge/Hardware-XiFan%20XF--45V%20%7C%20R36S-81A1C1?style=for-the-badge&logo=linux&logoColor=white" alt="XF-45V & R36S" />
+  <img src="https://img.shields.io/badge/Display-4%3A3%20Native%201024x768%20KMSDRM-A3BE8C?style=for-the-badge" alt="4:3 1024x768 KMSDRM" />
+  <a href="https://github.com/StationNorthMedia/SNfetchPLAYER"><img src="https://img.shields.io/badge/Android%20Companion-SNfetchPLAYER-D08770?style=for-the-badge&logo=android&logoColor=white" alt="Android Companion" /></a>
   <img src="https://img.shields.io/badge/Vibe-The%20Queen's%20Frequency-B48EAD?style=for-the-badge" alt="The Queen" />
 </p>
 
 ---
+
+<p align="center">
+  <img src="assets/backgrounds/bg_01_neon_skyline.webp" width="100%" alt="Station North Neon Skyline Banner" />
+</p>
 
 ## 🎙️ A Transmission from The Queen
 
@@ -27,16 +31,25 @@
 
 ---
 
-## 💡 Design Philosophy: Built for 4:3 Retro Handhelds
+<p align="center">
+  <img src="assets/backgrounds/bg_02_rainy_station.webp" width="100%" alt="Rainy Station Cyberdeck Banner" />
+</p>
 
-Station North was born out of love for the **R36S, R35S and classic RK3326 retro handhelds** equipped with authentic 4:3 displays (640×480).  
+## 💡 Design Philosophy: Built for Authentic 4:3 Retro Handhelds
+
+Station North was designed for **the XiFan XF-45V (R36S Max 2 clone)**, the **R36S**, and compatible classic **RK3326 retro handhelds** featuring authentic 4:3 displays.  
 The core vision: **turn your handheld into a dedicated, late-night Cyberdeck** — streaming lofi frequencies, voiced lore comics, and authentic 4:3 CRT video broadcasts directly on your desk or nightstand.
 
 - **Authentic 4:3 CRT Aesthetic**: Video broadcasts, lower-third banners, and UI elements are specifically cropped and framed for 4:3, delivering a nostalgic vintage television broadcast experience.
 - **Native Hardware Performance**: Built for Debian Linux under dArkOS & ArkOS. Runs at silky 60 FPS directly via Linux KMSDRM DirectFB (`/dev/dri/card0`) and native ALSA audio with zero desktop overhead or emulated runtime lag.
 - **Dedicated Dual Mode**: Seamlessly switch between the live 40-band audio spectrum analyzer (Radio Mode) and 4:3 full-screen broadcast videos (TV Mode).
+- **The Chronicles Lore Engine**: Full illustrated audio comic reader with synchronized Queen voiceover narration, chapter headlines, and panel indexing.
 
 ---
+
+<p align="center">
+  <img src="assets/backgrounds/bg_06_queen_throne.webp" width="100%" alt="Queen's Throne Gallery Banner" />
+</p>
 
 ## 🌟 The Visual Gallery
 
@@ -48,6 +61,10 @@ The core vision: **turn your handheld into a dedicated, late-night Cyberdeck** �
 | **07 • The Chronicles (Voiced Audio Comics)**<br><a href="screenshots/07_the_chronicles.png"><img src="screenshots/07_the_chronicles.png" width="460" alt="The Chronicles" /></a><br><i>Deep-black comic canvas with voiceover player & 21px legible story text.</i> | **08 • System Deck & Interactive Handbook**<br><a href="screenshots/08_settings_handbook.png"><img src="screenshots/08_settings_handbook.png" width="460" alt="Settings Handbook" /></a><br><i>20px settings typography with scrollable on-device user manual.</i> |
 
 ---
+
+<p align="center">
+  <img src="assets/backgrounds/bg_04_retro_cassette.webp" width="100%" alt="Retro Cassette Controls Banner" />
+</p>
 
 ## 🎮 Controller Layout & Keybindings
 
@@ -70,11 +87,15 @@ Configured for native dArkOS / ArkOS gamepads with hardware debounce:
 
 ---
 
+<p align="center">
+  <img src="assets/backgrounds/bg_05_subway_frequency.webp" width="100%" alt="Subway Frequency Installation Banner" />
+</p>
+
 ## 📦 Installation on dArkOS / ArkOS
 
-Two installation options are available in [GitHub Releases](https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases):
+Two installation packages are available in [GitHub Releases](https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/latest):
 
-### Option 1: Lightweight Online Package (`snfetchplayer.zip` ~128 KB)
+### Option 1: Lightweight Online Package (`snfetchplayer.zip` ~390 KB)
 *Recommended for Wi-Fi enabled handhelds.*
 1. Download `snfetchplayer.zip`.
 2. Extract the archive into your SD card's `ports/` directory:
@@ -86,13 +107,17 @@ Two installation options are available in [GitHub Releases](https://github.com/S
 3. Boot your device, connect to Wi-Fi, and launch **Station North SNfetchPLAYER** from the **Ports** menu.
 4. On first launch, the built-in **High-Speed Asset Downloader** will automatically download and unpack the media bundle (jingles, TV idents, comics).
 
-### Option 2: Full Offline Bundle (`snfetchplayer-full.zip` ~285 MB)
+### Option 2: Full Offline Bundle (`snfetchplayer-full.zip` ~298 MB)
 *Recommended for offline devices or zero-setup plug-and-play.*
 1. Download `snfetchplayer-full.zip`.
 2. Extract directly to `/roms/ports/` on your SD card.
 3. Plug in and play immediately with zero downloads required!
 
 ---
+
+<p align="center">
+  <img src="assets/backgrounds/bg_08_crate_archive.webp" width="100%" alt="Crate Archive Media Deck Banner" />
+</p>
 
 ## 📁 Dedicated Offline Media & Custom Playlist Folders
  
@@ -112,10 +137,15 @@ SNfetchPLAYER automatically detects and indexes local media:
 └── playlists/                 # Preloaded Station North Channels
     ├── main_top100.json       # Top 100 R&B / Soul / Hip-Hop
     ├── us_hiphop_top50.json
-    └── us_rnb_top50.json
+    ├── us_rnb_top50.json      # Default Radio Station
+    └── us_softrock_top50.json
 ```
 
 ---
+
+<p align="center">
+  <img src="assets/backgrounds/bg_03_cyber_rooftop.webp" width="100%" alt="Cyber Rooftop Companion Banner" />
+</p>
 
 ## 📱 Native Android Companion: Station North Android App
 
@@ -131,13 +161,26 @@ SNfetchPLAYER is also available as a full-featured, hardware-accelerated **nativ
 
 ---
 
-## 🛠️ Technical Specifications (dArkOS / ArkOS)
+<p align="center">
+  <img src="assets/backgrounds/bg_07_alley_window.webp" width="100%" alt="Alley Window Tech Specs Banner" />
+</p>
 
-- **Platform Target**: Rockchip RK3326 / 4:3 640×480 Handhelds (R36S, R35S and compatible clones).
-- **Display Pipeline**: Pygame 2.6 on Linux KMSDRM DirectFB (`/dev/dri/card0`) with hardware V-Sync.
-- **Audio Pipeline**: Direct ALSA Hardware Sink (`-f alsa default`) with uncompressed PCM stream coupling.
-- **Stream Processing**: Headless InnerTube streaming engine + low-latency `ffplay` with ASS subtitle rendering.
-- **Spectrum Analysis**: 40-band real-time FFT analyzer with logarithmic binning and AGC (Automatic Gain Control).
+## 🛠️ Verified Hardware Specifications (XiFan XF-45V / R36S Max 2)
+
+Tested and optimized directly on the **XiFan XF-45V handheld** (R36S Max 2 clone):
+
+| Specification | Hardware Detail |
+|---|---|
+| **Device Model** | **XiFan XF-45V** (R36S Max 2 clone) / Compatible RK3326 Handhelds |
+| **System-on-Chip (SoC)** | **Rockchip RK3326** (`rockchip,rk3326-xf45v-linux`) |
+| **CPU Architecture** | **Quad-Core ARM Cortex-A35 @ up to 1.30 GHz** (64-bit `aarch64`) |
+| **Display Panel** | **4.5-inch 4:3 IPS Screen**, Native Hardware Resolution: **1024×768 (XGA)** |
+| **Display Pipeline** | Direct Linux KMSDRM DirectFB (`/dev/dri/card0`) with hardware V-Sync @ 60 FPS |
+| **System Memory** | **1 GB LPDDR3 RAM** (~918 MiB available) |
+| **Operating System** | **Debian GNU/Linux 13 (trixie) / dArkOS** (Kernel `4.4.189 aarch64`) |
+| **Audio Architecture** | Direct ALSA Hardware (`hw:0,0` / uncompressed PCM stream coupling) |
+| **Storage Architecture** | Dual MicroSD (Slot 1: OS partition / Slot 2: `/roms` partition) |
+| **Streaming Engine** | Low-latency `ffplay` with InnerTube stream resolver & ASS subtitle compositor |
 
 ---
 

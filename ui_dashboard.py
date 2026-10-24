@@ -1259,7 +1259,7 @@ class SNfetchDashboard:
             # If > 25 files are missing, download the full asset archive in one high-throughput stream
             if total_needed > 25:
                 bundle_urls = [
-                    "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v6.2.0/snfetchplayer-assets.zip",
+                    "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v7.0.0/snfetchplayer-assets.zip",
                     "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v5.0.0/snfetchplayer-assets.zip",
                     "https://github.com/StationNorthMedia/SNfetchPLAYER-PortMaster/releases/download/v4.0.0/snfetchplayer-assets.zip"
                 ]
@@ -1709,7 +1709,7 @@ class SNfetchDashboard:
         self.screen.blit(note_surf, (cx - note_surf.get_width() // 2, card_y + 332))
 
         # 3. Harmonized 48px Bottom Bar
-        self.draw_bottom_bar(pills=[("B", "Cancel", NORD11)], right_text="v6.3 • Back to the Rules")
+        self.draw_bottom_bar(pills=[("B", "Cancel", NORD11)], right_text="v7.0 • Back to the Rules")
 
         pygame.display.flip()
 
@@ -2694,7 +2694,7 @@ class SNfetchDashboard:
         self.screen.blit(status_s, (cx - status_s.get_width() // 2, cy + 175))
 
         # Harmonized Bottom Bar with Skip button
-        self.draw_bottom_bar(pills=[("A", "Skip", NORD8)], right_text="v6.3 • Back to the Rules")
+        self.draw_bottom_bar(pills=[("A", "Skip", NORD8)], right_text="v7.0 • Back to the Rules")
 
     def _draw_intro_transition(self, ease: float):
         """Smooth docking transition from 3D rotating splash to docked header & 3+2 menu"""
@@ -2752,7 +2752,7 @@ class SNfetchDashboard:
         self.screen.fill(NORD0)
 
         # 1. Top Bar / Header with official SN Logo
-        self.draw_top_bar(custom_title="STATION NORTH", subtitle="CYBERDECK MEDIA SUITE • v6.0", show_logo=show_top_logo)
+        self.draw_top_bar(custom_title="STATION NORTH", subtitle="CYBERDECK MEDIA SUITE • v7.0", show_logo=show_top_logo)
 
         # Layout Dimensions (Total width 910px centered on 1024px screen)
         card_w = 230
@@ -2984,7 +2984,7 @@ class SNfetchDashboard:
             ("D-Pad", "Navigate", NORD7),
             ("Sel", "Settings", NORD9)
         ]
-        self.draw_bottom_bar(pills=menu_pills, right_text="v6.3 • Back to the Rules")
+        self.draw_bottom_bar(pills=menu_pills, right_text="v7.0 • Back to the Rules")
 
     # =========================================================================
     # RENDERER 2: RADIO ZEN VISUALIZER (FULLSCREEN SPECTRUM ANALYZER)
@@ -3067,7 +3067,7 @@ class SNfetchDashboard:
         title_surf = self._load_font(24, bold=True).render(title_text, True, NORD6)
         self.screen.blit(title_surf, (lx, 7))
 
-        sub_text = subtitle if subtitle else "CYBERDECK MEDIA SUITE • v6.0"
+        sub_text = subtitle if subtitle else "CYBERDECK MEDIA SUITE • v7.0"
         sub_surf = self._load_font(15, bold=True).render(sub_text, True, NORD8)
         self.screen.blit(sub_surf, (lx, 33))
 
@@ -3333,6 +3333,30 @@ class SNfetchDashboard:
         pygame.draw.rect(self.screen, (0, 0, 0), panel_rect, border_radius=16)
         pygame.draw.rect(self.screen, (35, 42, 54), panel_rect, width=2, border_radius=16)
 
+        # 1. Left Comic Panel: Chapter Header over image, Panel Counter under image
+        if ":" in chapter_name:
+            chap_parts = chapter_name.split(":", 1)
+            c_prefix = chap_parts[0].strip().upper()
+            c_sub = chap_parts[1].strip()
+            cp_s = self._load_font(15, bold=True).render(c_prefix, True, NORD8)
+            self.screen.blit(cp_s, (col1_x + (col1_w - cp_s.get_width()) // 2, panel_y + 10))
+            cs_s = self._load_font(18, bold=True).render(c_sub, True, NORD6)
+            if cs_s.get_width() > col1_w - 24:
+                cs_s = self._load_font(15, bold=True).render(c_sub, True, NORD6)
+            self.screen.blit(cs_s, (col1_x + (col1_w - cs_s.get_width()) // 2, panel_y + 30))
+        else:
+            c_s = self._load_font(18, bold=True).render(chapter_name, True, NORD8)
+            if c_s.get_width() > col1_w - 24:
+                c_s = self._load_font(15, bold=True).render(chapter_name, True, NORD8)
+            self.screen.blit(c_s, (col1_x + (col1_w - c_s.get_width()) // 2, panel_y + 18))
+
+        pygame.draw.line(self.screen, (40, 46, 58), (col1_x + 20, panel_y + 54), (col1_x + col1_w - 20, panel_y + 54), 1)
+
+        # Scale and render Comic Panel in centered image space
+        img_area_top = panel_y + 58
+        img_area_bottom = panel_y + panel_h - 46
+        avail_h = img_area_bottom - img_area_top
+
         if image_name not in self.chronicles_img_cache:
             img_paths = [
                 APP_DIR / "assets/comic" / image_name,
@@ -3346,7 +3370,7 @@ class SNfetchDashboard:
                         if pygame.display.get_surface():
                             raw = raw.convert()
                         rw, rh = raw.get_size()
-                        scale = min((col1_w - 24) / rw, (panel_h - 24) / rh)
+                        scale = min((col1_w - 24) / rw, avail_h / rh)
                         target_size = (int(rw * scale), int(rh * scale))
                         scaled = pygame.transform.smoothscale(raw, target_size)
                         loaded_surf = scaled
@@ -3359,8 +3383,14 @@ class SNfetchDashboard:
         if image_name in self.chronicles_img_cache:
             surf = self.chronicles_img_cache[image_name]
             px = col1_x + (col1_w - surf.get_width()) // 2
-            py = panel_y + (panel_h - surf.get_height()) // 2
+            py = img_area_top + (avail_h - surf.get_height()) // 2
             self.screen.blit(surf, (px, py))
+
+        # Panel Navigation & Counter at bottom of comic box
+        pygame.draw.line(self.screen, (40, 46, 58), (col1_x + 20, panel_y + panel_h - 44), (col1_x + col1_w - 20, panel_y + panel_h - 44), 1)
+        pan_txt = f"◄   PANEL {panel_id} OF {len(self.chronicles_data)}   ►"
+        pan_s = self._load_font(16, bold=True).render(pan_txt, True, NORD13)
+        self.screen.blit(pan_s, (col1_x + (col1_w - pan_s.get_width()) // 2, panel_y + panel_h - 32))
 
         # Audio Box direkt unter dem Comic-Panel
         abox_y = panel_y + panel_h + 14
@@ -3378,7 +3408,7 @@ class SNfetchDashboard:
         aname_s = self._load_font(17, bold=True).render(audio_name, True, NORD4)
         self.screen.blit(aname_s, (col1_x + 20, abox_y + 58))
 
-        # Rechte Spalte: Fließtext
+        # 2. Right Column: Narrative Log with clean spacious layout
         col2_x = 504
         col2_w = 480
         col2_y = 66
@@ -3388,9 +3418,9 @@ class SNfetchDashboard:
         pygame.draw.rect(self.screen, NORD1, tbox_rect, border_radius=16)
         pygame.draw.rect(self.screen, NORD2, tbox_rect, width=1, border_radius=16)
 
-        c_badge = self._load_font(19, bold=True).render(f"{chapter_name} • Panel {panel_id}/{len(self.chronicles_data)}", True, NORD13)
-        self.screen.blit(c_badge, (col2_x + 24, col2_y + 18))
-        pygame.draw.line(self.screen, NORD2, (col2_x + 20, col2_y + 48), (col2_x + col2_w - 20, col2_y + 48), 1)
+        h_surf = self._load_font(17, bold=True).render("✦ THE CHRONICLES // NARRATIVE LOG ✦", True, NORD8)
+        self.screen.blit(h_surf, (col2_x + 24, col2_y + 16))
+        pygame.draw.line(self.screen, NORD2, (col2_x + 20, col2_y + 44), (col2_x + col2_w - 20, col2_y + 44), 1)
 
         # Word wrap text with elevated 21px bold font for crystal clarity
         words = text_content.split()
@@ -3406,11 +3436,11 @@ class SNfetchDashboard:
         if cur_line:
             lines.append(" ".join(cur_line))
 
-        ty = col2_y + 64
-        for l in lines[:17]:
+        ty = col2_y + 58
+        for l in lines[:18]:
             lsurf = self.font_body.render(l, True, NORD6)
             self.screen.blit(lsurf, (col2_x + 24, ty))
-            ty += 34
+            ty += 32
 
         chronicles_pills = [
             ("◄/►", "Browse Panels", NORD8),
@@ -3629,7 +3659,7 @@ class SNfetchDashboard:
     # =========================================================================
     # RENDERER 7: BOTTOM BAR (UNIFIED PILL BADGE FOOTER)
     # =========================================================================
-    def draw_bottom_bar(self, pills: Optional[List[Tuple[str, str, Tuple[int, int, int]]]] = None, custom_controls: Optional[str] = None, right_text: str = "v6.3 • Back to the Rules"):
+    def draw_bottom_bar(self, pills: Optional[List[Tuple[str, str, Tuple[int, int, int]]]] = None, custom_controls: Optional[str] = None, right_text: str = "v7.0 • Back to the Rules"):
         by = SCREEN_HEIGHT - 48
         pygame.draw.rect(self.screen, (28, 33, 42), (0, by, SCREEN_WIDTH, 48))
         pygame.draw.line(self.screen, (46, 52, 64), (0, by), (SCREEN_WIDTH, by), 2)
