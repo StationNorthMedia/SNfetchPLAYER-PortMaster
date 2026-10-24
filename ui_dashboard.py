@@ -693,6 +693,18 @@ class SNfetchDashboard:
         self.playlist: List[Dict] = []
         self._discover_playlists()
 
+        # Default Radio Playlist to 'US R&B Top 50' if present
+        for i, pl in enumerate(self.available_playlists):
+            if "r&b" in pl.get("title", "").lower() or "rnb" in pl.get("path", "").lower():
+                self.radio_playlist_idx = i
+                break
+
+        # Default TV Playlist to 'Main Top 100' if present
+        for i, pl in enumerate(self.available_playlists):
+            if "top 100" in pl.get("title", "").lower() or "main_top100" in pl.get("path", "").lower():
+                self.tv_playlist_idx = i
+                break
+
         # Quotes / Lore & Aurora Styling
         self.quotes: List[Dict[str, Any]] = []
         self.current_quote: str = "The lights are low, the bass is heavy. Station North."
@@ -700,6 +712,7 @@ class SNfetchDashboard:
         self._last_quote_time: float = time.time()
         self._cached_radial_glow: Optional[pygame.Surface] = None
         self._load_quotes()
+        self._load_quote_backgrounds()
 
         # The Chronicles
         self.chronicles_data: List[Dict] = []
@@ -847,17 +860,18 @@ class SNfetchDashboard:
 
         labels = {
             "main_top100": "Station North • Main Top 100",
-            "us_hiphop_top50": "Station North • US Hip-Hop Top 50",
             "us_rnb_top50": "Station North • US R&B Top 50",
+            "us_hiphop_top50": "Station North • US Hip-Hop Top 50",
+            "us_softrock_top50": "Station North • US Soft Rock Top 50",
             "playlist": "Station North • Essential Selection"
         }
 
-        for key in ["main_top100", "us_hiphop_top50", "us_rnb_top50"]:
+        for key in ["main_top100", "us_rnb_top50", "us_hiphop_top50", "us_softrock_top50"]:
             if key in found_paths:
                 self.available_playlists.append({"title": labels[key], "path": str(found_paths[key].resolve())})
 
         for key, p in found_paths.items():
-            if key not in ["main_top100", "us_hiphop_top50", "us_rnb_top50"]:
+            if key not in ["main_top100", "us_rnb_top50", "us_hiphop_top50", "us_softrock_top50"]:
                 title = labels.get(key, f"Playlist: {p.stem.upper()}")
                 self.available_playlists.append({"title": title, "path": str(p.resolve())})
 
@@ -1005,8 +1019,9 @@ class SNfetchDashboard:
         if self.quotes:
             q = random.choice(self.quotes)
             self.current_quote = q["text"]
-            # Always assign a randomized Aurora color per user request
             self.current_quote_color = random.choice(AURORA_PALETTE)
+            if hasattr(self, "quote_bg_surfaces") and self.quote_bg_surfaces:
+                self.current_quote_bg_idx = (self.current_quote_bg_idx + 1) % len(self.quote_bg_surfaces)
         else:
             self.current_quote = "The lights are low, the bass is heavy. Station North."
             self.current_quote_color = random.choice(AURORA_PALETTE)
@@ -1014,8 +1029,56 @@ class SNfetchDashboard:
 
     def _check_cycle_quote(self):
         now = time.time()
-        if now - self._last_quote_time > 8.0:
+        # Calibrated 22.0s reading interval so user has plenty of time to enjoy quotes
+        if now - self._last_quote_time > 22.0:
             self._update_quote()
+
+    def _load_quote_backgrounds(self):
+        """Loads and pre-processes subtle background artwork for the Queen Directives console"""
+        self.quote_bg_surfaces = []
+        self.current_quote_bg_idx = 0
+        bg_dirs = [
+            APP_DIR / "assets/backgrounds",
+            APP_DIR / "assets/ui",
+            Path("assets/backgrounds"),
+            Path("assets/ui")
+        ]
+        found_imgs = []
+        for bd in bg_dirs:
+            if bd.exists():
+                for p in sorted(bd.glob("*.*")):
+                    if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"} and not p.name.startswith("cassette"):
+                        if p not in found_imgs:
+                            found_imgs.append(p)
+
+        # Fallback to comic cover if no dedicated background image yet
+        if not found_imgs:
+            for cov in [APP_DIR / "assets/comic/Cover_Vol01.webp", Path("assets/comic/Cover_Vol01.webp")]:
+                if cov.exists():
+                    found_imgs.append(cov)
+                    break
+
+        box_w, box_h = 910, 286
+        for img_path in found_imgs[:10]:
+            try:
+                raw_surf = pygame.image.load(str(img_path))
+                iw, ih = raw_surf.get_size()
+                if iw <= 0 or ih <= 0:
+                    continue
+                scale = max(box_w / iw, box_h / ih)
+                nw, nh = max(box_w, int(iw * scale)), max(box_h, int(ih * scale))
+                scaled = pygame.transform.smoothscale(raw_surf, (nw, nh))
+                crop_x = max(0, (nw - box_w) // 2)
+                crop_y = max(0, (nh - box_h) // 2)
+                cropped = pygame.Surface((box_w, box_h))
+                cropped.blit(scaled, (-crop_x, -crop_y))
+                # Apply 84% dark Nord0 tint so quote text is 100% crystal clear and high-contrast
+                dark_tint = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                dark_tint.fill((34, 39, 49, 215))
+                cropped.blit(dark_tint, (0, 0))
+                self.quote_bg_surfaces.append(cropped)
+            except Exception as e:
+                logging.debug(f"Could not load quote bg {img_path}: {e}")
 
     def _render_wrapped_lines(self, text: str, font: pygame.font.Font, max_w: int) -> List[str]:
         words = text.split(" ")
@@ -2785,44 +2848,45 @@ class SNfetchDashboard:
         box_h = 286
         box_x = start_x
         pygame.draw.rect(self.screen, (34, 39, 49), (box_x, lower_box_y, box_w, box_h), border_radius=16)
+
+        # Subtle dark-tinted background artwork if available
+        if hasattr(self, "quote_bg_surfaces") and self.quote_bg_surfaces:
+            bg_surf = self.quote_bg_surfaces[self.current_quote_bg_idx % len(self.quote_bg_surfaces)]
+            self.screen.blit(bg_surf, (box_x, lower_box_y))
+
         pygame.draw.rect(self.screen, (46, 52, 64), (box_x, lower_box_y, box_w, box_h), width=2, border_radius=16)
 
         is_celebrating = (self.sync_completed_timestamp > 0 and (time.time() - self.sync_completed_timestamp < 5.0))
         show_progress_bar = self.sync_active or is_celebrating or (pct < 99.0)
 
-        if self.sync_active:
-            disp_pct = self.sync_pct
-            hdr_text = f"DOWNLOADING MEDIA ASSETS ({int(disp_pct)}% READY)"
-            hdr_col = NORD8
-            sub_text = self.sync_status_text if self.sync_status_text else "Downloading media pack from GitHub..."
-            sub_col = NORD5
-        elif is_celebrating:
-            hdr_text = "✦ ALL MEDIA ASSETS SYNCHRONIZED (100% READY) ✦"
-            hdr_col = NORD14
-            sub_text = "174 Station Jingles   •   42 Retro TV Idents (4:3)   •   131 Chronicles Pages & Lore Audio Ready"
-            sub_col = (255, 255, 255)
-        elif pct >= 99.0:
-            hdr_text = "✦ THE QUEEN'S FREQUENCY // BROADCAST TRANSMISSION ✦"
-            hdr_col = NORD7
-            sub_text = f"All 347 Station Media Assets Synchronized ({j_found} Jingles • {t_found} TV Idents • {c_found} Chronicles)"
-            sub_col = NORD4
-        else:
-            hdr_text = f"ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
-            hdr_col = NORD13
-            sub_text = f"Local Assets: {j_found}/174 Jingles   •   {t_found}/42 TV Idents   •   {c_found}/131 Chronicles"
-            sub_col = NORD5
-
-        # Header with indicator dot
-        pygame.draw.circle(self.screen, hdr_col, (box_x + 34, lower_box_y + 32), 7)
-        sync_title = self._load_font(21, bold=True).render(hdr_text, True, hdr_col)
-        self.screen.blit(sync_title, (box_x + 50, lower_box_y + 20))
-
-        # Subtext breakdown
-        details_surf = self._load_font(17, bold=True).render(sub_text, True, sub_col)
-        self.screen.blit(details_surf, (box_x + 28, lower_box_y + 52))
-
-        # Segmented LED Progress Bar (Cyberdeck Style: 30 rectangles with 4px gap)
         if show_progress_bar:
+            if self.sync_active:
+                disp_pct = self.sync_pct
+                hdr_text = f"DOWNLOADING MEDIA ASSETS ({int(disp_pct)}% READY)"
+                hdr_col = NORD8
+                sub_text = self.sync_status_text if self.sync_status_text else "Downloading media pack from GitHub..."
+                sub_col = NORD5
+            elif is_celebrating:
+                hdr_text = "✦ ALL MEDIA ASSETS SYNCHRONIZED (100% READY) ✦"
+                hdr_col = NORD14
+                sub_text = "174 Station Jingles   •   42 Retro TV Idents (4:3)   •   131 Chronicles Pages & Lore Audio Ready"
+                sub_col = (255, 255, 255)
+            else:
+                hdr_text = f"ASSETS INCOMPLETE ({int(pct)}% READY) • OFFLINE MODE"
+                hdr_col = NORD13
+                sub_text = f"Local Assets: {j_found}/174 Jingles   •   {t_found}/42 TV Idents   •   {c_found}/131 Chronicles"
+                sub_col = NORD5
+
+            # Header with indicator dot
+            pygame.draw.circle(self.screen, hdr_col, (box_x + 34, lower_box_y + 32), 7)
+            sync_title = self._load_font(21, bold=True).render(hdr_text, True, hdr_col)
+            self.screen.blit(sync_title, (box_x + 50, lower_box_y + 20))
+
+            # Subtext breakdown
+            details_surf = self._load_font(17, bold=True).render(sub_text, True, sub_col)
+            self.screen.blit(details_surf, (box_x + 28, lower_box_y + 52))
+
+            # Segmented LED Progress Bar (Cyberdeck Style: 30 rectangles with 4px gap)
             bar_w = box_w - 56
             bar_h = 16
             bar_x = box_x + 28
@@ -2844,34 +2908,38 @@ class SNfetchDashboard:
                     pygame.draw.rect(self.screen, (22, 26, 34), s_rect, border_radius=3)
                     pygame.draw.rect(self.screen, (38, 44, 56), s_rect, width=1, border_radius=3)
 
+            # Divider line and lower quote section
             div_y = lower_box_y + 112
-            badge_y = lower_box_y + 122
+            pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, div_y), (box_x + box_w - 28, div_y), 1)
+
+            badge_surf = self._load_font(14, bold=True).render("✦ QUEEN DIRECTIVES // TRANSMISSION FEED ✦", True, NORD9)
+            self.screen.blit(badge_surf, (box_x + 28, lower_box_y + 122))
+
             line_start_y = lower_box_y + 148
+            max_visible_lines = 4
         else:
-            # When fully synchronized and celebration has expired: progress bar is completely HIDDEN!
-            div_y = lower_box_y + 82
-            badge_y = lower_box_y + 92
-            line_start_y = lower_box_y + 118
+            # When fully synchronized and celebration has expired: NO asset header or numbers! Pure Queen Directives Console!
+            pygame.draw.circle(self.screen, NORD8, (box_x + 34, lower_box_y + 30), 6)
+            badge_surf = self._load_font(18, bold=True).render("✦ THE QUEEN'S DIRECTIVES // TRANSMISSION FEED ✦", True, NORD8)
+            self.screen.blit(badge_surf, (box_x + 48, lower_box_y + 20))
+
+            pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, lower_box_y + 52), (box_x + box_w - 28, lower_box_y + 52), 1)
+
+            line_start_y = lower_box_y + 68
+            max_visible_lines = 6
 
         # 4. Randomized Lore & Quotes from sprueche.json in Aurora Colors
         self._check_cycle_quote()
-        pygame.draw.line(self.screen, (46, 52, 64), (box_x + 28, div_y), (box_x + box_w - 28, div_y), 1)
 
-        # Broadcast badge
-        badge_surf = self._load_font(14, bold=True).render("✦ QUEEN DIRECTIVES // TRANSMISSION FEED ✦", True, NORD9)
-        self.screen.blit(badge_surf, (box_x + 28, badge_y))
-
-        # Word-wrapped Quote Text in Randomized Aurora Color
-        q_font = self._load_font(20, bold=True)
+        q_font = self._load_font(21 if not show_progress_bar else 19, bold=True)
         max_q_w = box_w - 56
         quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
-        if len(quote_lines) > 3:
+        if len(quote_lines) > max_visible_lines:
             q_font = self._load_font(18, bold=True)
             quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
 
         line_y = line_start_y
-        line_h = 28 if q_font.size("A")[1] >= 20 else 24
-        max_visible_lines = 4 if show_progress_bar else 5
+        line_h = 32 if not show_progress_bar else 26
         for line in quote_lines[:max_visible_lines]:
             q_surf = q_font.render(line, True, self.current_quote_color)
             self.screen.blit(q_surf, (box_x + 28, line_y))
