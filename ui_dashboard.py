@@ -970,7 +970,7 @@ class SNfetchDashboard:
                 pass
 
         if not self.available_playlists:
-            self.available_playlists.append({"title": "Station North • Standard", "path": "playlist.json"})
+            self.available_playlists.append({"title": "Station North • Default", "path": "playlist.json"})
 
         # Default Radio Playlist to 'US R&B Top 50' if present
         for i, pl in enumerate(self.available_playlists):
@@ -1520,7 +1520,7 @@ class SNfetchDashboard:
             self.screen.blit(sub_s, ((w - sub_s.get_width()) // 2, cy + vinyl_radius + 92))
 
         # Bottom Bar
-        self.draw_bottom_bar(pills=[("B", "Abbrechen", NORD11)], right_text="Station North • Crate Engine")
+        self.draw_bottom_bar(pills=[("B", "Cancel", NORD11)], right_text="Station North • Crate Engine")
 
     def _trigger_prefetch_next_track(self, curr_idx: int, is_tv: bool):
         """Pre-resolves the next track's stream URL in a background worker thread"""
@@ -1709,7 +1709,7 @@ class SNfetchDashboard:
         self.screen.blit(note_surf, (cx - note_surf.get_width() // 2, card_y + 332))
 
         # 3. Harmonized 48px Bottom Bar
-        self.draw_bottom_bar(pills=[("B", "Abbrechen", NORD11)], right_text="v6.3 • Back to the Rules")
+        self.draw_bottom_bar(pills=[("B", "Cancel", NORD11)], right_text="v6.3 • Back to the Rules")
 
         pygame.display.flip()
 
@@ -2694,7 +2694,7 @@ class SNfetchDashboard:
         self.screen.blit(status_s, (cx - status_s.get_width() // 2, cy + 175))
 
         # Harmonized Bottom Bar with Skip button
-        self.draw_bottom_bar(pills=[("A", "Überspringen", NORD8)], right_text="v6.3 • Back to the Rules")
+        self.draw_bottom_bar(pills=[("A", "Skip", NORD8)], right_text="v6.3 • Back to the Rules")
 
     def _draw_intro_transition(self, ease: float):
         """Smooth docking transition from 3D rotating splash to docked header & 3+2 menu"""
@@ -2859,17 +2859,17 @@ class SNfetchDashboard:
             badge_surf = badge_font.render("✦ THE QUEEN'S DIRECTIVES // TRANSMISSION FEED ✦", True, NORD8)
             badge_h = badge_surf.get_height()
 
-            # Measure quote block
-            q_font = self._load_font(21, bold=True)
+            # Measure quote block (adaptive font size to guarantee 0 clipping)
             max_q_w = box_w - 56
+            q_font = self._load_font(21, bold=True)
             quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
-            max_visible_lines = 4
-            if len(quote_lines) > max_visible_lines:
+            if len(quote_lines) >= 3:
                 q_font = self._load_font(18, bold=True)
                 quote_lines = self._render_wrapped_lines(f"“{self.current_quote}”", q_font, max_q_w)
 
+            max_visible_lines = 6
             visible_lines = quote_lines[:max_visible_lines]
-            line_h = 32 if len(visible_lines) <= 2 else 28
+            line_h = 30 if len(visible_lines) <= 2 else 26
             quote_block_h = len(visible_lines) * line_h
 
             total_text_h = badge_h + 10 + quote_block_h
@@ -2980,9 +2980,9 @@ class SNfetchDashboard:
 
         # 4. Harmonized Bottom Footer Bar with Pills (NO [B] Exit!)
         menu_pills = [
-            ("A", "Starten", NORD8),
-            ("D-Pad", "Navigieren", NORD7),
-            ("Sel", "Optionen", NORD9)
+            ("A", "Launch", NORD8),
+            ("D-Pad", "Navigate", NORD7),
+            ("Sel", "Settings", NORD9)
         ]
         self.draw_bottom_bar(pills=menu_pills, right_text="v6.3 • Back to the Rules")
 
@@ -3173,8 +3173,8 @@ class SNfetchDashboard:
         radio_pills = [
             ("A", "Play / Pause", NORD8),
             ("◄/►", "Track", NORD14),
-            ("X", "Zen Vollbild", NORD13),
-            ("B", "Hauptmenü", NORD11)
+            ("X", "Zen Fullscreen", NORD13),
+            ("B", "Main Menu", NORD11)
         ]
         self.draw_bottom_bar(pills=radio_pills, right_text="Station North • Radio")
 
@@ -3258,9 +3258,9 @@ class SNfetchDashboard:
 
         # Harmonized Bottom Bar with Pills
         tv_pills = [
-            ("A", "Vollbild Starten", NORD8),
-            ("◄/►", "Kanal", NORD14),
-            ("B", "Hauptmenü", NORD11)
+            ("A", "Launch Fullscreen", NORD8),
+            ("◄/►", "Channel", NORD14),
+            ("B", "Main Menu", NORD11)
         ]
         self.draw_bottom_bar(pills=tv_pills, right_text="Station North • Television")
 
@@ -3316,7 +3316,7 @@ class SNfetchDashboard:
         if not self.chronicles_data:
             msg_s = self.font_hero.render("No Chronicles Data Found (assets/comic)", True, NORD11)
             self.screen.blit(msg_s, ((SCREEN_WIDTH - msg_s.get_width()) // 2, 350))
-            self.draw_bottom_bar(pills=[("B", "Hauptmenü", NORD11)], right_text="Station North • Chronicles")
+            self.draw_bottom_bar(pills=[("B", "Main Menu", NORD11)], right_text="Station North • Chronicles")
             return
 
         item = self.chronicles_data[self.chronicles_idx]
@@ -3413,9 +3413,9 @@ class SNfetchDashboard:
             ty += 34
 
         chronicles_pills = [
-            ("◄/►", "Panel Blättern", NORD8),
-            ("A", "Vorlesen", NORD14),
-            ("B", "Hauptmenü", NORD11)
+            ("◄/►", "Browse Panels", NORD8),
+            ("A", "Read Aloud", NORD14),
+            ("B", "Main Menu", NORD11)
         ]
         self.draw_bottom_bar(pills=chronicles_pills, right_text="Station North • Chronicles")
 
@@ -3424,23 +3424,23 @@ class SNfetchDashboard:
     # =========================================================================
     def draw_settings_screen(self):
         self.screen.fill(NORD0)
-        self.draw_top_bar(custom_title="STATION NORTH • EINSTELLUNGEN", subtitle="STORAGE & SYSTEM CONFIGURATION")
+        self.draw_top_bar(custom_title="STATION NORTH • SETTINGS", subtitle="STORAGE & SYSTEM CONFIGURATION")
 
-        # Queen Directives Header Quote (Groesser & Deutlicher)
+        # Queen Directives Header Quote
         q_header = "\"A well-maintained machine rules without interruption. Manage storage & updates.\" — Queen Directives"
         qh_s = self._load_font(17, bold=True).render(q_header, True, NORD13)
         self.screen.blit(qh_s, ((SCREEN_WIDTH - qh_s.get_width()) // 2, 62))
 
-        # --- LINKE SPALTE: EINSTELLUNGEN & REGLER (x=30, w=480) ---
+        # --- LEFT COLUMN: SETTINGS & CONTROLS (x=30, w=480) ---
         j_found, t_found, c_found, tot_found, a_pct = self.get_asset_stats()
         settings_items = [
-            ("Radio Active Playlist", self.available_playlists[self.radio_playlist_idx]["title"] if self.available_playlists else "Standard"),
-            ("TV Active Playlist", self.available_playlists[self.tv_playlist_idx]["title"] if self.available_playlists else "Standard"),
+            ("Radio Active Playlist", self.available_playlists[self.radio_playlist_idx]["title"] if self.available_playlists else "Default"),
+            ("TV Active Playlist", self.available_playlists[self.tv_playlist_idx]["title"] if self.available_playlists else "Default"),
             ("Jingle Rotation Frequency", f"Every {self.station_mgr.rotation_interval} Songs" if self.station_mgr.rotation_interval > 0 else "OFF"),
             ("Single-Track Repeat Loop", "ENABLED (Repeat One)" if self.shuffle_mgr.is_repeat_mode else "DISABLED (Shuffle)"),
             ("Master Audio Volume", f"{self.hardware.get_master_volume()}%"),
             ("Screen Backlight Brightness", f"{self.hardware.get_brightness()}%"),
-            ("Media Assets & Synchronisation", f"{tot_found}/347 ({int(a_pct)}%) • [A] Prüfen / Sync"),
+            ("Media Assets & Sync", f"{tot_found}/347 ({int(a_pct)}%) • [A] Check / Sync"),
             ("📖 Open System Handbook", "Press [A] or [►] to Jump to Right Column")
         ]
 
@@ -3469,7 +3469,17 @@ class SNfetchDashboard:
             self.screen.blit(l_surf, (r_rect.x + 20, ry + 8))
 
             val_col = NORD7 if i == 7 else (NORD14 if "ENABLED" in val or "%" in val else NORD13)
-            val_surf = self._load_font(18, bold=True).render(val, True, val_col)
+            val_font = self._load_font(18, bold=True)
+            val_surf = val_font.render(val, True, val_col)
+            # Auto-scale/truncate value text if it exceeds box_w - 40 (440px) to prevent overflow
+            if val_surf.get_width() > box_w - 40:
+                val_font = self._load_font(15, bold=True)
+                val_surf = val_font.render(val, True, val_col)
+                if val_surf.get_width() > box_w - 40:
+                    short_val = val
+                    while val_font.size(short_val + "...")[0] > box_w - 40 and len(short_val) > 6:
+                        short_val = short_val[:-1]
+                    val_surf = val_font.render(short_val + "...", True, val_col)
             self.screen.blit(val_surf, (r_rect.x + 20, ry + 32))
 
             if is_sel:
@@ -3479,7 +3489,7 @@ class SNfetchDashboard:
             fb_s = self._load_font(18, bold=True).render(self.settings_feedback_msg, True, NORD14)
             self.screen.blit(fb_s, (30 + (box_w - fb_s.get_width()) // 2, start_y + len(settings_items) * (row_h + 8) + 4))
 
-        # --- RECHTE SPALTE: HANDBUCH, TV-STEUERUNG & CURATOR GUIDE (x=530, w=464) ---
+        # --- RIGHT COLUMN: HANDBOOK, TV CONTROLS & CURATOR GUIDE (x=530, w=464) ---
         guide_x = 530
         guide_y = 88
         guide_w = 464
@@ -3490,131 +3500,131 @@ class SNfetchDashboard:
         pygame.draw.rect(self.screen, NORD1, guide_rect, border_radius=16)
         pygame.draw.rect(self.screen, NORD8 if is_guide_focused else NORD2, guide_rect, width=2 if is_guide_focused else 1, border_radius=16)
 
-        # Card Header (Spacious layout, no text collision)
-        gh_s = self._load_font(22, bold=True).render("SYSTEM HANDBOOK", True, NORD8)
-        self.screen.blit(gh_s, (guide_x + 20, guide_y + 14))
+        # Card Header: Cleanly stacked vertically so title and hint never collide
+        gh_s = self._load_font(21, bold=True).render("SYSTEM HANDBOOK", True, NORD8)
+        self.screen.blit(gh_s, (guide_x + 20, guide_y + 12))
 
-        hint_text = "[▲/▼] Scrollen • [◄/B] Zurück" if is_guide_focused else "[A] Öffnen"
+        hint_text = "[▲/▼] Scroll • [◄/B] Back to Menu" if is_guide_focused else "[A] Focus Handbook • [◄] Return"
         hint_col = NORD14 if is_guide_focused else NORD4
-        hint_s = self._load_font(15, bold=True).render(hint_text, True, hint_col)
-        self.screen.blit(hint_s, (guide_x + guide_w - hint_s.get_width() - 20, guide_y + 18))
+        hint_s = self._load_font(14, bold=True).render(hint_text, True, hint_col)
+        self.screen.blit(hint_s, (guide_x + 20, guide_y + 36))
 
-        pygame.draw.line(self.screen, NORD2, (guide_x + 18, guide_y + 44), (guide_x + guide_w - 18, guide_y + 44), 1)
+        pygame.draw.line(self.screen, NORD2, (guide_x + 18, guide_y + 56), (guide_x + guide_w - 18, guide_y + 56), 1)
 
-        # Scrollbare Inhaltsoberflaeche fuer groessere, perfekt lesbare Schrift
+        # Scrollable content surface with guaranteed margin protection (< 390px width)
         content_w = guide_w - 36
-        content_h = 920
+        content_h = 880
         content_surf = pygame.Surface((content_w, content_h), pygame.SRCALPHA)
         content_surf.fill((0, 0, 0, 0))
 
-        gy = 4
+        gy = 6
 
-        # Section 1: TV Player Controls (4 Funktionen)
-        t_sec = self._load_font(20, bold=True).render("📺 TV CONTROLS (4 DEDICATED KEYS):", True, NORD7)
+        # Section 1: TV Player Controls (4 dedicated functions)
+        t_sec = self._load_font(19, bold=True).render("📺 TV CONTROLS (4 DEDICATED KEYS):", True, NORD7)
         content_surf.blit(t_sec, (4, gy))
-        gy += 30
+        gy += 28
 
         ctrl_lines = [
             ("START", "Play / Pause Video (Toggle)"),
-            ("B", "Instant Exit (0ms) & Return to Menu"),
-            ("◄ / ►", "Previous / Next Video (D-Pad & Stick)"),
-            ("X / Y", "Single-Track Repeat Loop (Repeat One)")
+            ("B", "Exit instantly to Main Menu"),
+            ("◄ / ►", "Prev / Next Video (D-Pad/Stick)"),
+            ("X / Y", "Toggle Repeat One / Loop")
         ]
         for key_btn, key_desc in ctrl_lines:
-            kb_s = self._load_font(18, bold=True).render(f"[{key_btn}]", True, NORD13)
-            kd_s = self._load_font(18).render(key_desc, True, NORD6)
-            content_surf.blit(kb_s, (8, gy))
-            content_surf.blit(kd_s, (96, gy))
-            gy += 28
+            kb_s = self._load_font(16, bold=True).render(f"[{key_btn}]", True, NORD13)
+            kd_s = self._load_font(16).render(key_desc, True, NORD6)
+            content_surf.blit(kb_s, (6, gy))
+            content_surf.blit(kd_s, (82, gy))
+            gy += 26
 
-        gy += 14
+        gy += 12
         pygame.draw.line(content_surf, NORD2, (4, gy), (content_w - 4, gy), 1)
         gy += 14
 
-        # Section 2: Eigene Playlists & Medien
-        m_sec = self._load_font(20, bold=True).render("📁 CUSTOM MEDIA & PLAYLISTS:", True, NORD12)
+        # Section 2: Custom Media & Playlists
+        m_sec = self._load_font(19, bold=True).render("📁 CUSTOM MEDIA & PLAYLISTS:", True, NORD12)
         content_surf.blit(m_sec, (4, gy))
-        gy += 30
+        gy += 28
 
         msg1 = [
-            "Drop your own music, videos & custom playlists directly",
-            "into the /playlists/ folder on your SD card.",
-            "Supports YouTube live streams, MP4/MKV videos,",
-            "and local high-fidelity MP3 and FLAC audio files."
+            "Drop music, videos and playlists directly into the",
+            "/playlists/ folder on your micro SD card.",
+            "Supports YouTube streams, MP4/MKV videos, and",
+            "high-fidelity local MP3 / FLAC audio files."
         ]
         for line in msg1:
-            ls = self._load_font(18).render(line, True, NORD4)
-            content_surf.blit(ls, (8, gy))
-            gy += 26
+            ls = self._load_font(16).render(line, True, NORD4)
+            content_surf.blit(ls, (6, gy))
+            gy += 24
 
-        gy += 14
+        gy += 12
         pygame.draw.line(content_surf, NORD2, (4, gy), (content_w - 4, gy), 1)
         gy += 14
 
         # Section 3: Native Android APK & Curator
-        c_sec = self._load_font(20, bold=True).render("📱 NATIVE ANDROID APK & CURATOR:", True, NORD14)
+        c_sec = self._load_font(19, bold=True).render("📱 NATIVE ANDROID APK & CURATOR:", True, NORD14)
         content_surf.blit(c_sec, (4, gy))
-        gy += 30
+        gy += 28
 
         msg2 = [
-            "For Android handhelds (Retroid Pocket, Odin, RG556)",
-            "or phones, SNfetchPLAYER is also available as an APK!",
+            "For Android handhelds (Odin, Retroid, RG556) or",
+            "phones, SNfetchPLAYER is also available as APK!",
             "👉 github.com/StationNorthMedia/SNfetchPLAYER",
-            "Includes touch & gamepad controls plus the Curator",
-            "Console to build and export playlists for your handheld."
+            "Includes touch controls and the Curator Console",
+            "to create and export custom playlists."
         ]
         for line in msg2:
-            ls = self._load_font(18).render(line, True, NORD4)
-            content_surf.blit(ls, (8, gy))
-            gy += 26
+            ls = self._load_font(16).render(line, True, NORD4)
+            content_surf.blit(ls, (6, gy))
+            gy += 24
 
-        gy += 14
+        gy += 12
         pygame.draw.line(content_surf, NORD2, (4, gy), (content_w - 4, gy), 1)
         gy += 14
 
-        # Section 4: Radio Vollbild OSD
-        r_sec = self._load_font(20, bold=True).render("📻 RADIO FULLSCREEN COCKPIT (OSD):", True, NORD8)
+        # Section 4: Radio Fullscreen Cockpit (OSD)
+        r_sec = self._load_font(19, bold=True).render("📻 RADIO FULLSCREEN COCKPIT (OSD):", True, NORD8)
         content_surf.blit(r_sec, (4, gy))
-        gy += 30
+        gy += 28
 
         msg3 = [
             "Press [X] to launch the fullscreen visualizer.",
-            "The 5-button cockpit automatically fades out after 4s.",
-            "Press any key to wake the menu • [B] exits fullscreen."
+            "The 5-button cockpit auto-hides after 4 seconds.",
+            "Press any key to show menu • [B] to exit."
         ]
         for line in msg3:
-            ls = self._load_font(18).render(line, True, NORD4)
-            content_surf.blit(ls, (8, gy))
-            gy += 26
+            ls = self._load_font(16).render(line, True, NORD4)
+            content_surf.blit(ls, (6, gy))
+            gy += 24
 
-        clip_h = guide_h - 60
-        self.settings_guide_max_scroll = max(0, content_h - clip_h + 20)
-        self.screen.blit(content_surf, (guide_x + 16, guide_y + 48), area=pygame.Rect(0, self.settings_guide_scroll_y, content_w, clip_h))
+        clip_h = guide_h - 72
+        self.settings_guide_max_scroll = max(0, gy - clip_h + 20)
+        self.screen.blit(content_surf, (guide_x + 16, guide_y + 60), area=pygame.Rect(0, self.settings_guide_scroll_y, content_w, clip_h))
 
-        # Vertikaler Scrollbalken
+        # Vertical Scrollbar
         track_h = clip_h - 16
-        pygame.draw.rect(self.screen, (46, 52, 64), (guide_x + guide_w - 12, guide_y + 54, 4, track_h), border_radius=2)
+        pygame.draw.rect(self.screen, (46, 52, 64), (guide_x + guide_w - 12, guide_y + 66, 4, track_h), border_radius=2)
         if self.settings_guide_max_scroll > 0:
-            thumb_ratio = clip_h / float(content_h)
+            thumb_ratio = clip_h / float(gy)
             thumb_h = max(24, int(track_h * thumb_ratio))
             scroll_pct = self.settings_guide_scroll_y / float(self.settings_guide_max_scroll)
-            thumb_y = guide_y + 54 + int((track_h - thumb_h) * scroll_pct)
+            thumb_y = guide_y + 66 + int((track_h - thumb_h) * scroll_pct)
             thumb_col = NORD8 if is_guide_focused else NORD2
             pygame.draw.rect(self.screen, thumb_col, (guide_x + guide_w - 13, thumb_y, 6, thumb_h), border_radius=3)
 
         if self.settings_column == 1:
             settings_pills = [
-                ("▲/▼", "Scrollen", NORD8),
-                ("◄/B", "Zurück", NORD11)
+                ("▲/▼", "Scroll", NORD8),
+                ("◄/B", "Back", NORD11)
             ]
         else:
             settings_pills = [
-                ("▲/▼", "Navigieren", NORD8),
-                ("◄/►", "Ändern", NORD14),
-                ("A", "Handbuch", NORD13),
-                ("B", "Hauptmenü", NORD11)
+                ("▲/▼", "Navigate", NORD8),
+                ("◄/►", "Change", NORD14),
+                ("A", "Handbook", NORD13),
+                ("B", "Main Menu", NORD11)
             ]
-        self.draw_bottom_bar(pills=settings_pills, right_text="Station North • System")
+        self.draw_bottom_bar(pills=settings_pills, right_text="Station North • Settings")
 
     # =========================================================================
     # RENDERER 7: BOTTOM BAR (UNIFIED PILL BADGE FOOTER)
