@@ -20,7 +20,7 @@
 ---
 
 <p align="center">
-  <img src="assets/backgrounds/bg_01_neon_skyline.webp" width="100%" alt="Station North Neon Skyline Banner" />
+  <img src="assets/backgrounds/bg_01_audi_alley.webp" width="100%" alt="Station North Neon Skyline Banner" />
 </p>
 
 ## 🎙️ A Transmission from The Queen
@@ -32,7 +32,7 @@
 ---
 
 <p align="center">
-  <img src="assets/backgrounds/bg_02_rainy_station.webp" width="100%" alt="Rainy Station Cyberdeck Banner" />
+  <img src="assets/backgrounds/bg_02_studio_manjaro.webp" width="100%" alt="Rainy Station Cyberdeck Banner" />
 </p>
 
 ## 💡 Design Philosophy: Built for Authentic 4:3 Retro Handhelds
@@ -48,7 +48,7 @@ The core vision: **turn your handheld into a dedicated, late-night Cyberdeck** �
 ---
 
 <p align="center">
-  <img src="assets/backgrounds/bg_06_queen_throne.webp" width="100%" alt="Queen's Throne Gallery Banner" />
+  <img src="assets/backgrounds/bg_06_onair_window.webp" width="100%" alt="On-Air Window Gallery Banner" />
 </p>
 
 ## 🌟 The Visual Gallery
@@ -63,7 +63,7 @@ The core vision: **turn your handheld into a dedicated, late-night Cyberdeck** �
 ---
 
 <p align="center">
-  <img src="assets/backgrounds/bg_04_retro_cassette.webp" width="100%" alt="Retro Cassette Controls Banner" />
+  <img src="assets/backgrounds/bg_04_radio_host.webp" width="100%" alt="Radio Host Controls Banner" />
 </p>
 
 ## 🎮 Controller Layout & Keybindings
@@ -88,7 +88,7 @@ Configured for native dArkOS / ArkOS gamepads with hardware debounce:
 ---
 
 <p align="center">
-  <img src="assets/backgrounds/bg_05_subway_frequency.webp" width="100%" alt="Subway Frequency Installation Banner" />
+  <img src="assets/backgrounds/bg_05_dj_booth.webp" width="100%" alt="DJ Booth Installation Banner" />
 </p>
 
 ## 📦 Installation on dArkOS / ArkOS
@@ -144,7 +144,7 @@ SNfetchPLAYER automatically detects and indexes local media:
 ---
 
 <p align="center">
-  <img src="assets/backgrounds/bg_03_cyber_rooftop.webp" width="100%" alt="Cyber Rooftop Companion Banner" />
+  <img src="assets/backgrounds/bg_03_lounge_singer.webp" width="100%" alt="Lounge Singer Companion Banner" />
 </p>
 
 ## 📱 Native Android Companion: Station North Android App
