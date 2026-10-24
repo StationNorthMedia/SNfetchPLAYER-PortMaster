@@ -23,11 +23,17 @@ scp -o BatchMode=yes -o ConnectTimeout=5 extractor.py osd_generator.py ui_dashbo
 
 # 3. Assets synchronisieren (inklusive UI-Cassette, Comics, Jingles)
 echo "🎨 Synchronisiere Assets..."
-rsync -avz --exclude='*.git*' assets/ $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/assets/
+rsync -avz --delete --exclude='*.git*' assets/ $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/assets/
 
-# 4. Playlisten synchronisieren
-echo "🎵 Synchronisiere Playlists..."
+# 4. Playlisten, Musik & Videos synchronisieren
+echo "🎵 Synchronisiere Playlists, Musik & Videos..."
 rsync -avz playlists/ $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/playlists/
+if [ -d music ]; then
+  rsync -avz music/ $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/music/
+fi
+if [ -d videos ]; then
+  rsync -avz videos/ $REMOTE_USER@$DEVICE_IP:$REMOTE_TARGET/videos/
+fi
 
 # 5. Launcher-Skript kopieren und Rechte setzen
 echo "⚙️ Kopiere Launcher & setze Berechtigungen..."

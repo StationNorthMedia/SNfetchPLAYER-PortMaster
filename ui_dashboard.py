@@ -972,6 +972,12 @@ class SNfetchDashboard:
         if not self.available_playlists:
             self.available_playlists.append({"title": "Station North • Standard", "path": "playlist.json"})
 
+        # Default Radio Playlist to 'US R&B Top 50' if present
+        for i, pl in enumerate(self.available_playlists):
+            if "r&b" in pl.get("title", "").lower() or "rnb" in pl.get("path", "").lower():
+                self.radio_playlist_idx = i
+                break
+
     def _load_active_playlist(self, is_tv: bool = False):
         idx = self.tv_playlist_idx if is_tv else self.radio_playlist_idx
         if not self.available_playlists:
@@ -1039,17 +1045,20 @@ class SNfetchDashboard:
         self.current_quote_bg_idx = 0
         bg_dirs = [
             APP_DIR / "assets/backgrounds",
-            APP_DIR / "assets/ui",
-            Path("assets/backgrounds"),
-            Path("assets/ui")
+            Path("assets/backgrounds")
         ]
         found_imgs = []
         for bd in bg_dirs:
             if bd.exists():
                 for p in sorted(bd.glob("*.*")):
-                    if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"} and not p.name.startswith("cassette"):
-                        if p not in found_imgs:
-                            found_imgs.append(p)
+                    if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+                        try:
+                            rp = p.resolve()
+                            if rp not in [f.resolve() for f in found_imgs]:
+                                found_imgs.append(p)
+                        except Exception:
+                            if p not in found_imgs:
+                                found_imgs.append(p)
 
         # Fallback to comic cover if no dedicated background image yet
         if not found_imgs:
@@ -1059,7 +1068,7 @@ class SNfetchDashboard:
                     break
 
         box_w, box_h = 910, 286
-        for img_path in found_imgs[:10]:
+        for img_path in found_imgs[:20]:
             try:
                 raw_surf = pygame.image.load(str(img_path))
                 iw, ih = raw_surf.get_size()
@@ -1070,12 +1079,16 @@ class SNfetchDashboard:
                 scaled = pygame.transform.smoothscale(raw_surf, (nw, nh))
                 crop_x = max(0, (nw - box_w) // 2)
                 crop_y = max(0, (nh - box_h) // 2)
-                cropped = pygame.Surface((box_w, box_h))
+                cropped = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
                 cropped.blit(scaled, (-crop_x, -crop_y))
                 # Apply 84% dark Nord0 tint so quote text is 100% crystal clear and high-contrast
                 dark_tint = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
                 dark_tint.fill((34, 39, 49, 215))
                 cropped.blit(dark_tint, (0, 0))
+                # Apply smooth rounded corner mask matching the container's border_radius=16
+                mask = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, box_w, box_h), border_radius=16)
+                cropped.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
                 self.quote_bg_surfaces.append(cropped)
             except Exception as e:
                 logging.debug(f"Could not load quote bg {img_path}: {e}")
